@@ -195,6 +195,7 @@ samples <- c("./../data/GSE126834/homeostatic_muscs_1",
              "./../data/GSE126834/total_muscle_wt_2")
 
 # Read samples separately (homeostatic MUSCs, injured 60h MUSCs, Primary Myoblasts)
+# TODO: Find out if total muscle should also be added to the data set
 GSE126834_hom1 <- Read10X(data.dir = samples[1])
 GSE126834_hom2 <- Read10X(data.dir = samples[2])
 GSE126834_inj1 <- Read10X(data.dir = samples[3])
