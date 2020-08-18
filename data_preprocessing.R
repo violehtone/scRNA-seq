@@ -347,8 +347,9 @@ saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
 #     * quickCluster() + calculateSumFactors()
 # --------------------------------------------------------------- #
 # (Load files)
-#sce.deMicheli.f <- readRDS("sce_deMicheli_f")
-#sce.dellOrso.f <- readRDS("sce_dellOrso_f")
+
+sce.deMicheli.f <- readRDS("sce_deMicheli_f")
+sce.dellOrso.f <- readRDS("sce_dellOrso_f")
 
 sce.dellOrso.n <- sce.dellOrso.f
 sce.deMicheli.n <- sce.deMicheli.f
@@ -385,8 +386,11 @@ saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n")
 # De Micheli et al.
 # --------------------------------------------------------------- #
 # Scaling normalization & log-transform for each sample
-for(n in names(sce.deMicheli.n)) {
-  print(n)
+# Due to computational issues, perform normalization on FACS / non-FACS samples separately
+
+# FACS samples
+facs_samples <- c("FACS_d0", "FACS_d2", "FACS_d5", "FACS_d7")
+for(n in facs_samples) {
   set.seed(100)
   clust <- quickCluster(sce.deMicheli.n[[n]])
   sce.deMicheli.n[[n]] <- computeSumFactors(sce.deMicheli.n[[n]],
@@ -395,5 +399,29 @@ for(n in names(sce.deMicheli.n)) {
   sce.deMicheli.n[[n]] <- logNormCounts(sce.deMicheli.n[[n]])
 }
 
+# Non-FACS sample
+set.seed(100)
+clust <- quickCluster(sce.deMicheli.n[["non_FACS"]],
+                      block = sce.deMicheli.n[["non_FACS"]]$sampleID)
+sce.deMicheli.n[["non_FACS"]] <- computeSumFactors(sce.deMicheli.n[["non_FACS"]],
+                                                   cluster = clust,
+                                                   min.mean = 0.1)
+# Log-transformation of non-FACS sample
+sce.deMicheli.n[["non_FACS"]] <- logNormCounts(sce.deMicheli.n[["non_FACS"]])
+
 # Save normalized data
 saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
