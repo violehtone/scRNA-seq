@@ -413,15 +413,57 @@ sce.deMicheli.n[["non_FACS"]] <- logNormCounts(sce.deMicheli.n[["non_FACS"]])
 saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 
 
+###############################################
+### Feature selection & dimension reduction ###
+###############################################
+# --------------------------------------------------------------- #
+# Dell'Orso et al.
+# --------------------------------------------------------------- #
+#sce.dellOrso.n <- readRDS("sce_dellOrso_n")
 
+# Model per-gene variance (technical & biological variation)
+dec.dellOrso <- modelGeneVar(sce.dellOrso.n,
+                             block = sce.dellOrso.n$sample)
 
+# Define the highly variable genes (HVGs) and perform dimension reduction
+hvgs.dellOrso <- getTopHVGs(dec.dellOrso, prop = 0.1)
+sce.dellOrso.n <- runPCA(sce.dellOrso.n, subset_row = hvgs.dellOrso)
+plotReducedDim(sce.dellOrso.n, dimred = "PCA", colour_by = "sample")
 
+# Remove PCs corresponding to technical noise
+set.seed(123)
+denoised.sce.dellOrso <- denoisePCA(sce.dellOrso.n,
+                                    technical = dec.dellOrso,
+                                    subset.row = hvgs.dellOrso)
 
+# Save sce object
+saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
 
+# --------------------------------------------------------------- #
+# De Micheli et al.
+# --------------------------------------------------------------- #
+#sce.deMicheli.n <- readRDS("sce_deMicheli_n")
 
+# Model per-gene variance (technical & biological variation)
+dec.deMicheli <- list(FACS_d0 = modelGeneVar(sce.deMicheli.n$FACS_d0),
+                      FACS_d2 = modelGeneVar(sce.deMicheli.n$FACS_d2),
+                      FACS_d5 = modelGeneVar(sce.deMicheli.n$FACS_d5),
+                      FACS_d7 = modelGeneVar(sce.deMicheli.n$FACS_d7),
+                      non_FACS = modelGeneVar(sce.deMicheli.n$non_FACS))
 
+# Define HVGs, perform dimension reduction, and remove PCs corresponding to technical noise
+denoised.sce.deMicheli <- list()
 
+for(n in names(sce.deMicheli.n)) {
+  print(n)
+  hvgs <- getTopHVGs(dec.deMicheli[[n]], prop = 0.1)
+  sce.deMicheli.n[[n]] <- runPCA(sce.deMicheli.n[[n]], subset_row = hvgs)
+  denoised.sce.deMicheli[[n]] <- denoisePCA(sce.deMicheli.n[[n]],
+                                            technical = dec.deMicheli[[n]],
+                                            subset.row = hvgs)
+  }
 
-
+# Save sce object
+saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
 
 
