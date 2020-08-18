@@ -84,61 +84,6 @@ checkQCMetricCorrelation <- function(sce) {
 }
 
 
-performNormalization <- function(sce) {
-  #' Computes library size factors, sum factors, and deconvolution size factors and log-transforms the data
-  # Compute library size factors
-  lib.sf <- librarySizeFactors(sce)
-  # Perform clustering
-  set.seed(100)
-  quickie <- quickCluster(sce)
-  print(table(quickie))
-  # compute sum factors
-  sce <- computeSumFactors(sce, cluster = quickie)
-  # Compute deconvolution size factors
-  deconv.sf <- sizeFactors(sce)
-  # plot lib sf vs. deconv sf.
-  plot(x = lib.sf,
-       y = deconv.sf,
-       xlab = "library size factor",
-       ylab = "deconvolution size factor",
-       log = "xy",
-       pch = 16)
-  abline(a=0, b=1, col="red")
-  # perform log normalization
-  sce <- logNormCounts(sce)
-}
-
-
-checkDiagnosticPlots <- function(sce) {
-  #' Create a diagnostic plot of total counts vs. mito%
-  return(
-  gridExtra::grid.arrange(
-    plotColData(sce,
-                x = "sum",
-                y = "subsets_Mito_percent",
-                colour_by = "discard")
-    )
-  )
-}
-
-checkForEmptyDroplets <- function(sce) {
-  #' Checks for empty droplets and subsets sce to retain only detected cells
-  # 'NOTE: # CellRanger v3 automatically performs cell calling so there is no need for calling emptyDrops()
-  
-  set.seed(100)
-  # Distinguish between droplets containing cells and ambient RNA
-  e.out <- emptyDrops(counts(sce),
-                      lower = 100,
-                      test.ambient = TRUE)
-  # Summarize the results
-  print(substitute(sce))
-  print(summary(e.out))
-  # Subset sce object to retain only the detected cells
-  sce <- sce[, which(e.out$FDR <= 0.001)]
-  return(sce)
-}
-
-
 #####################
 ### Load data ###
 #####################
@@ -401,22 +346,54 @@ saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
 #  - Normalization by deconvolution: normalize on summed expression values from pools of cells
 #     * quickCluster() + calculateSumFactors()
 # --------------------------------------------------------------- #
+# (Load files)
+#sce.deMicheli.f <- readRDS("sce_deMicheli_f")
+#sce.dellOrso.f <- readRDS("sce_dellOrso_f")
 
-performNormalization(sce.dellOrso.f)
-for(n in names(sce.deMicheli.f)) {
-  performNormalization(sce.deMicheli.f[[n]])
+sce.dellOrso.n <- sce.dellOrso.f
+sce.deMicheli.n <- sce.deMicheli.f
+
+# --------------------------------------------------------------- #
+# Dell'Orso et al.
+# --------------------------------------------------------------- #
+# Compute size factors
+dellOrso.lib.sf <- librarySizeFactors(sce.dellOrso.n)
+summary(dellOrso.lib.sf)
+
+set.seed(100)
+clust.dellOrso <- quickCluster(sce.dellOrso.n)
+
+sce.dellOrso.n <- computeSumFactors(sce.dellOrso.n,
+                                    cluster = clust.dellOrso,
+                                    min.mean = 0.1)
+
+dellOrso.deconv.sf <- sizeFactors(sce.dellOrso.n)
+summary(dellOrso.deconv.sf)
+
+# Plot library size factor vs. deconvolution size factor
+plot(sce.dellOrso.lib.sf, dellOrso.deconv.sf, xlab="Library size factor",
+     ylab="Deconvolution size factor", log='xy', pch=16)
+abline(a=0, b=1, col="red")
+
+# Compute log-normalized expression values for each cell
+sce.dellOrso.n <- logNormCounts(sce.dellOrso.n)
+
+# Save normalized data
+saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n")
+
+# --------------------------------------------------------------- #
+# De Micheli et al.
+# --------------------------------------------------------------- #
+# Scaling normalization & log-transform for each sample
+for(n in names(sce.deMicheli.n)) {
+  print(n)
+  set.seed(100)
+  clust <- quickCluster(sce.deMicheli.n[[n]])
+  sce.deMicheli.n[[n]] <- computeSumFactors(sce.deMicheli.n[[n]],
+                                            cluster = clust,
+                                            min.mean = 0.1)
+  sce.deMicheli.n[[n]] <- logNormCounts(sce.deMicheli.n[[n]])
 }
 
-# Cell cycle scoring (https://satijalab.org/seurat/v3.2/cell_cycle_vignette.html)
-
-
-
-
-
-
-
-
-
-
-
-
+# Save normalized data
+saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
