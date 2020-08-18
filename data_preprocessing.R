@@ -50,7 +50,7 @@ removeGeneExpLessThanX <- function(data, x) {
 }
 
 
-performQC <- function(sce) {
+performCellQC <- function(sce) {
   #' Perform pel cell QC and detect mitochondrial transcripts
   location <- rowRanges(sce)
   is.mito <- any(seqnames(location) == "MT")
@@ -201,7 +201,8 @@ GSE126834_hom2 <- Read10X(data.dir = samples[2])
 GSE126834_inj1 <- Read10X(data.dir = samples[3])
 GSE126834_inj2 <- Read10X(data.dir = samples[4])
 GSE126834_mb <- Read10X(data.dir = samples[5])
-
+GSE126834_tot1 <- Read10X(data.dir = samples[6])
+GSE126834_tot2 <- Read10X(data.dir = samples[6])
 
 #########################
 ### Build SCE objects ###
@@ -230,8 +231,14 @@ sce_GSE143435_d5$FACS <- TRUE
 sce_GSE143435_d7$FACS <- TRUE
 sce_GSE143437$FACS <- FALSE
 
-# TODO: Find out how and if the datasets should be merged together prior to normalization?
-#sce_de_micheli <- cbind(sce_GSE143435_d0, sce_GSE143435_d2, sce_GSE143435_d5, sce_GSE143435_d7, sce_GSE143437)
+sce.deMicheli <- list(FACS_d0 = sce_GSE143435_d0,
+                      FACS_d2 = sce_GSE143435_d2,
+                      FACS_d5 = sce_GSE143435_d5,
+                      FACS_d7 = sce_GSE143435_d7,
+                      non_FACS = sce_GSE143437)
+
+# Save sce object
+saveRDS(sce.deMicheli, file = "sce_deMicheli")
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. (2019): GSE126834 data set
@@ -242,6 +249,9 @@ sce_GSE126834_hom2 <- SingleCellExperiment(assays = list(counts = GSE126834_hom2
 sce_GSE126834_inj1 <- SingleCellExperiment(assays = list(counts = GSE126834_inj1))
 sce_GSE126834_inj2 <- SingleCellExperiment(assays = list(counts = GSE126834_inj2))
 sce_GSE126834_mb <- SingleCellExperiment(assays = list(counts = GSE126834_mb))
+sce_GSE126834_tot1 <- SingleCellExperiment(assays = list(counts = GSE126834_tot1))
+sce_GSE126834_tot2 <- SingleCellExperiment(assays = list(counts = GSE126834_tot2))
+
 
 # Assign sample groups to the sce objects
 sce_GSE126834_hom1$sample <- "homeostatic_MuSCs_rep1"
@@ -249,43 +259,39 @@ sce_GSE126834_hom2$sample <- "homeostatic_MuSCs_rep2"
 sce_GSE126834_inj1$sample <- "inj_60h_MuSCs_rep1"
 sce_GSE126834_inj2$sample <- "inj_60h_MuSCs_rep2"
 sce_GSE126834_mb$sample <- "Primary_MB"
+sce_GSE126834_tot1$sample <- "total_muscle_wt_rep1"
+sce_GSE126834_tot2$sample <- "total_muscle_wt_rep2"
 
 # Merge the samples into a single sce object (samples separated by the $sample column)
-sce_GSE126834 <- cbind(sce_GSE126834_hom1, sce_GSE126834_hom2,
-                       sce_GSE126834_inj1, sce_GSE126834_inj2,
-                       sce_GSE126834_mb)
+sce.dellOrso <- cbind(sce_GSE126834_hom1, sce_GSE126834_hom2,
+                      sce_GSE126834_inj1, sce_GSE126834_inj2,
+                      sce_GSE126834_mb, sce_GSE126834_tot1,
+                      sce_GSE126834_tot2)
 
-
-
-# Save sce objects
-saveRDS(sce_GSE143437, file = "sce_GSE143437")
-saveRDS(sce_GSE143435_d0, file = "sce_GSE143435_d0")
-saveRDS(sce_GSE143435_d2, file = "sce_GSE143435_d2")
-saveRDS(sce_GSE143435_d5, file = "sce_GSE143435_d5")
-saveRDS(sce_GSE143435_d7, file = "sce_GSE143435_d7")
-saveRDS(sce_GSE126834_merged, file = "sce_GSE126834_merged")
-
+# Save sce object
+saveRDS(sce.dellOrso, file = "sce_dellOrso")
 
 
 #######################
 ### Quality control ###
 #######################
+# --------------------------------------------------------------- #
+# Notes about quality control
+# --------------------------------------------------------------- #
+# Motivation: remove low-quality libraries (cells) from the data
 
-#### Notes on QC ######
-## Motivation: remove low-quality libraries (cells) from the data ##
+# Metrics of low quality:
+#  - Cells with small library sizes (Library size = total sum of counts across all relevant features for each cell)
+#  - Cells with only few expressed genes (number of genes with non-zero counts for that cell)
+#  - Proportion of reads mapped to mitochondrial genome (high proportions = poor quality)
+#  - (Proportion of reads mapped to spike-in transcripts (high proportions = poor quality))
 
-## Metrics of low quality: ##
-#   - Cells with small library sizes (Library size = total sum of counts across all relevant features for each cell)
-#   - Cells with only few expressed genes (number of genes with non-zero counts for that cell)
-#   - Proportion of reads mapped to mitochondrial genome (high proportions = poor quality)
-#   - (Proportion of reads mapped to spike-in transcripts (high proportions = poor quality))
-
-## In practice:
-#   - perCellQualityMetrics() calculates all the above metrics
-#       * sum = total count for each cell
-#       * detected = # of detected genes
-#       * subsets_mito_percent = % of reads mapped to mitochondrial transcripts
-#       * altexps_ERCC_percent = % of reads mapped to ERCC transcripts (spike-ins)
+# In practice:
+#  - perCellQualityMetrics() calculates all the above metrics
+#     * sum = total count for each cell
+#     * detected = # of detected genes
+#     * subsets_mito_percent = % of reads mapped to mitochondrial transcripts
+#     * altexps_ERCC_percent = % of reads mapped to ERCC transcripts (spike-ins)
 #  - addPerCellQC() does the same but just appends te per-cell QC metrics to the colData of sce object
 
 # Identifying outliers
@@ -293,75 +299,42 @@ saveRDS(sce_GSE126834_merged, file = "sce_GSE126834_merged")
 #  - A value is considered an outlier if it is more than 3 MADs from the median in the "problematic" direction
 #######################
 
-# Load files from a file (optional)
-#sce_GSE143437 <- readRDS("sce_GSE143437")
-#sce_GSE143435_d0 <- readRDS("sce_GSE143435_d0")
-#sce_GSE143435_d2 <- readRDS("sce_GSE143435_d2")
-#sce_GSE143435_d5 <- readRDS("sce_GSE143435_d5")
-#sce_GSE143435_d7 <- readRDS("sce_GSE143435_d7")
-#sce_GSE126834 <- readRDS("sce_GSE126834")
-
 # Remove genes that are expressed in less than 3 cells
-sce_GSE143437 <- removeGeneExpLessThanX(sce_GSE143437, 3)
-sce_GSE143435_d0 <- removeGeneExpLessThanX(sce_GSE143435_d0, 3)
-sce_GSE143435_d2 <- removeGeneExpLessThanX(sce_GSE143435_d2, 3)
-sce_GSE143435_d5 <- removeGeneExpLessThanX(sce_GSE143435_d5, 3)
-sce_GSE143435_d7 <- removeGeneExpLessThanX(sce_GSE143435_d7, 3)
-sce_GSE126834 <- removeGeneExpLessThanX(sce_GSE126834, 3)
+sce.dellOrso <- removeGeneExpLessThanX(sce.dellOrso, 3)
+for (n in names(sce.deMicheli)) {
+  sce.deMicheli[[n]] <- removeGeneExpLessThanX(sce.deMicheli[[n]], 3)
+  }
 
-# Retrieve mitochondrial transcripts and perform per cell QC
-sce_GSE143437 <- performQC(sce_GSE143437)
-sce_GSE143435_d0 <- performQC(sce_GSE143435_d0)
-sce_GSE143435_d2 <- performQC(sce_GSE143435_d2)
-sce_GSE143435_d5 <- performQC(sce_GSE143435_d5)
-sce_GSE143435_d7 <- performQC(sce_GSE143435_d7)
-sce_GSE126834 <- performQC(sce_GSE126834)
+# Compute per cell quality control metrics
+sce.dellOrso <- performCellQC(sce.dellOrso)
+for (n in names(sce.deMicheli)) {
+  sce.deMicheli[[n]] <- performCellQC(sce.deMicheli[[n]])
+  }
 
 # Save objects
-saveRDS(sce_GSE143437, file = "sce_GSE143437_qc")
-saveRDS(sce_GSE143435_d0, file = "sce_GSE143435_d0_qc")
-saveRDS(sce_GSE143435_d2, file = "sce_GSE143435_d2_qc")
-saveRDS(sce_GSE143435_d5, file = "sce_GSE143435_d5_qc")
-saveRDS(sce_GSE143435_d7, file = "sce_GSE143435_d7_qc")
-saveRDS(sce_GSE126834, file = "sce_GSE126834_qc")
+saveRDS(sce.dellOrso, file = "sce_dellOrso_qc")
+saveRDS(sce.deMicheli, file = "sce_dellMicheli_qc")
 
 # Identify outliers (low quality cells)
-discard_sce_GSE143437 <- findOutliers(sce_GSE143437)
-discard_sce_GSE143435_d0 <- findOutliers(sce_GSE143435_d0)
-discard_sce_GSE143435_d2 <- findOutliers(sce_GSE143435_d2)
-discard_sce_GSE143435_d5 <- findOutliers(sce_GSE143435_d5)
-discard_sce_GSE143435_d7 <- findOutliers(sce_GSE143435_d7)
-discard_sce_GSE126834 <- findOutliers(sce_GSE126834)
+sce.dellOrso$discard <- findOutliers(sce.dellOrso)
 
-sce_GSE143437$discard <- discard_sce_GSE143437
-sce_GSE143435_d0$discard <- discard_sce_GSE143435_d0
-sce_GSE143435_d2$discard <- discard_sce_GSE143435_d2
-sce_GSE143435_d5$discard <- discard_sce_GSE143435_d5
-sce_GSE143435_d7$discard <- discard_sce_GSE143435_d7
-sce_GSE126834$discard <- discard_sce_GSE126834
+for (n in names(sce.deMicheli)) {
+  sce.deMicheli[[n]]$discard <- findOutliers(sce.deMicheli[[n]])
+  }
 
 # Discard outliers
-sce_GSE143437.f <- sce_GSE143437[, sce_GSE143437$discard == FALSE]
-sce_GSE143435_d0.f <- sce_GSE143435_d0[, sce_GSE143435_d0$discard == FALSE]
-sce_GSE143435_d2.f <- sce_GSE143435_d2[, sce_GSE143435_d2$discard == FALSE]
-sce_GSE143435_d5.f <- sce_GSE143435_d5[, sce_GSE143435_d5$discard == FALSE]
-sce_GSE143435_d7.f <- sce_GSE143435_d7[, sce_GSE143435_d7$discard == FALSE]
-sce_GSE126834.f <- sce_GSE126834[, sce_GSE126834$discard == FALSE]
+sce.dellOrso.f <- sce.dellOrso[, sce.dellOrso$discard == FALSE]
+
+
+sce.deMicheli.f <- sce.deMicheli
+for (n in names(sce.deMicheli.f)) {
+  sce.deMicheli.f[[n]] <- sce.deMicheli.f[[n]][, sce.deMicheli.f[[n]]$discard == FALSE]
+  }
 
 # Save objects
-saveRDS(sce_GSE143437.f, file = "sce_GSE143437_qc_f")
-saveRDS(sce_GSE143435_d0.f, file = "sce_GSE143435_d0_qc_f")
-saveRDS(sce_GSE143435_d2.f, file = "sce_GSE143435_d2_qc_f")
-saveRDS(sce_GSE143435_d5.f, file = "sce_GSE143435_d5_qc_f")
-saveRDS(sce_GSE143435_d7.f, file = "sce_GSE143435_d7_qc_f")
-saveRDS(sce_GSE126834.f, file = "sce_GSE126834_qc_f")
+saveRDS(sce.deMicheli.f, file = "sce_deMicheli_f")
+saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
 
-sce_GSE143437.f <- readRDS("sce_GSE143437_qc_f")
-sce_GSE143435_d0.f <- readRDS("sce_GSE143435_d0_qc_f")
-sce_GSE143435_d2.f <- readRDS("sce_GSE143435_d2_qc_f")
-sce_GSE143435_d5.f <- readRDS("sce_GSE143435_d5_qc_f")
-sce_GSE143435_d7.f <- readRDS("sce_GSE143435_d7_qc_f")
-sce_GSE126834.f <- readRDS("sce_GSE126834_qc_f")
 
 #######################
 # QC diagnostic plots #
@@ -369,21 +342,17 @@ sce_GSE126834.f <- readRDS("sce_GSE126834_qc_f")
 #  - in ideal case we would see normal distributions that would justify the 3 MAD treshold used in outlier detection
 
 # Check if QC metrics correlate in the data sets
-checkQCMetricCorrelation(sce_GSE143437.f)
-checkQCMetricCorrelation(sce_GSE143435_d0.f)
-checkQCMetricCorrelation(sce_GSE143435_d2.f)
-checkQCMetricCorrelation(sce_GSE143435_d5.f)
-checkQCMetricCorrelation(sce_GSE143435_d7.f)
-checkQCMetricCorrelation(sce_GSE126834.f)
+checkQCMetricCorrelation(sce.dellOrso.f)
+
+for (n in names(sce.deMicheli.f)) {
+  checkQCMetricCorrelation(sce.deMicheli.f[[n]])
+}
 
 # Check the relationship between total counts vs. mito%
-checkDiagnosticPlots(sce_GSE143437.f)
-checkDiagnosticPlots(sce_GSE143435_d0.f)
-checkDiagnosticPlots(sce_GSE143435_d2.f)
-checkDiagnosticPlots(sce_GSE143435_d5.f)
-checkDiagnosticPlots(sce_GSE143435_d7.f)
-checkDiagnosticPlots(sce_GSE126834.f)
-
+checkDiagnosticPlots(sce.dellOrso.f)
+for (n in names(sce.deMicheli.f)) {
+  checkDiagnosticPlots(sce.deMicheli.f[[n]])
+}
 
 #######################
 
@@ -427,12 +396,10 @@ checkForEmptyDroplets <- function(sce) {
 #  - Normalization by deconvolution: normalize on summed expression values from pools of cells
 #     * quickCluster() + calculateSumFactors()
 
-performNormalization(sce_GSE143437.f)
-performNormalization(sce_GSE143435_d0.f)
-performNormalization(sce_GSE143435_d2.f)
-performNormalization(sce_GSE143435_d5.f)
-performNormalization(sce_GSE143435_d7.f)
-performNormalization(sce_GSE126834.f)
+performNormalization(sce.dellOrso.f)
+for(n in names(sce.deMicheli.f)) {
+  performNormalization(sce.deMicheli.f[[n]])
+}
 
 # Cell cycle scoring (https://satijalab.org/seurat/v3.2/cell_cycle_vignette.html)
 
