@@ -1,8 +1,7 @@
 ####################
 ### Introduction ###
 ####################
-# This script is used for performing the data pre-processing of in vivo mouse scRNA-seq data sets
-# from two studies:
+# This script is used for performing the data pre-processing of in vivo mouse scRNA-seq data sets from two studies:
 #   - De Micheli et al. (2020): GSE143435 and GSE143437 data sets
 #   - Dell'Orso et al. (2019): GSE126834 data set
 
@@ -11,10 +10,8 @@
 #   - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE143435
 #   - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE143437
 
-# Data sets:
-#  - GSE126834: 10X - total muscle wt, homeostatic MuSCs, Inj. 60h MuSCs, primary MB
-#  - GSE143435: 10X - FACS sorted samples (d0, d2, d5, d7)
-#  - GSE143437: 10X - non-FACS sorted samples
+# Set working dir to the source file location
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 #####################
 ### Load packages ###
@@ -26,9 +23,7 @@ library(DropletUtils)
 library(Seurat)
 library(dplyr)
 library(docstring)
-
-# Set working dir to the source file location
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+library(ggplot2)
 
 #########################
 ### Utility functions ###
@@ -43,7 +38,7 @@ firstColumnToRowNames <- function(data) {
 
 
 removeGeneExpLessThanX <- function(data, x) {
-  #' Remove genes from a sce object that are expressed in less than x cells
+  #' Remove genes (from a sce object) that are expressed in less than x cells
   keep_feature <- rowSums(counts(data) > 0) >= x
   data <- data[keep_feature, ]
   return(data)
@@ -51,7 +46,7 @@ removeGeneExpLessThanX <- function(data, x) {
 
 
 performCellQC <- function(sce) {
-  #' Perform pel cell QC and detect mitochondrial transcripts
+  #' Add per cell QC metrics and detect mitochondrial transcripts
   location <- rowRanges(sce)
   is.mito <- any(seqnames(location) == "MT")
   sce <- addPerCellQC(sce, subsets = list(Mito = is.mito))
@@ -70,10 +65,10 @@ findOutliers <- function(sce) {
   # All outliers
   discard <- qc.lib.sce | qc.nexprs.sce | qc.mito.sce
   # Summarize the number of cells removed for each reason
-  data.frame(LibSize = sum(qc.lib.sce),
-             NExprs = sum(qc.nexprs.sce),
-             MitoProp = sum(qc.mito.sce),
-             Total = sum(discard))
+  print(data.frame(LibSize = sum(qc.lib.sce),
+                   NExprs = sum(qc.nexprs.sce),
+                   MitoProp = sum(qc.mito.sce),
+                   Total = sum(discard)))
   
   return(discard)
 }
@@ -194,8 +189,7 @@ samples <- c("./../data/GSE126834/homeostatic_muscs_1",
              "./../data/GSE126834/total_muscle_wt_1",
              "./../data/GSE126834/total_muscle_wt_2")
 
-# Read samples separately (homeostatic MUSCs, injured 60h MUSCs, Primary Myoblasts)
-# TODO: Find out if total muscle should also be added to the data set
+# Read samples separately
 GSE126834_hom1 <- Read10X(data.dir = samples[1])
 GSE126834_hom2 <- Read10X(data.dir = samples[2])
 GSE126834_inj1 <- Read10X(data.dir = samples[3])
@@ -240,6 +234,18 @@ sce.deMicheli <- list(FACS_d0 = sce_GSE143435_d0,
 # Save sce object
 saveRDS(sce.deMicheli, file = "sce_deMicheli")
 
+# free memory
+remove(sce_GSE143435_d0)
+remove(sce_GSE143435_d2)
+remove(sce_GSE143435_d5)
+remove(sce_GSE143435_d7)
+remove(sce_GSE143437)
+remove(GSE143435_raw_d0)
+remove(GSE143435_raw_d2)
+remove(GSE143435_raw_d5)
+remove(GSE143435_raw_d7)
+remove(GSE143437_raw)
+
 # --------------------------------------------------------------- #
 # Dell'Orso et al. (2019): GSE126834 data set
 # --------------------------------------------------------------- #
@@ -271,6 +277,21 @@ sce.dellOrso <- cbind(sce_GSE126834_hom1, sce_GSE126834_hom2,
 # Save sce object
 saveRDS(sce.dellOrso, file = "sce_dellOrso")
 
+# free memory
+remove(sce_GSE126834_hom1)
+remove(sce_GSE126834_hom2)
+remove(sce_GSE126834_inj1)
+remove(sce_GSE126834_inj2)
+remove(sce_GSE126834_mb)
+remove(sce_GSE126834_tot1)
+remove(sce_GSE126834_tot2)
+remove(GSE126834_hom1)
+remove(GSE126834_hom2)
+remove(GSE126834_inj1)
+remove(GSE126834_inj2)
+remove(GSE126834_mb)
+remove(GSE126834_tot1)
+remove(GSE126834_tot2)
 
 #######################
 ### Quality control ###
@@ -321,6 +342,35 @@ sce.dellOrso$discard <- findOutliers(sce.dellOrso)
 for (n in names(sce.deMicheli)) {
   sce.deMicheli[[n]]$discard <- findOutliers(sce.deMicheli[[n]])
   }
+
+# Summarize outliers
+summary(sce.dellOrso$discard)
+
+for (n in names(sce.deMicheli)) {
+  print(n)
+  print(summary(sce.deMicheli[[n]]$discard))
+}
+
+# Plot QC
+# Dell'Orso
+gridExtra::grid.arrange(
+  plotColData(sce.dellOrso, 
+              x = "sample", y = "sum", colour_by = "discard", point_size = 0.3) +
+    scale_y_log10() +
+    ggtitle("Total counts") +
+    guides(colour =  guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90)),
+  plotColData(sce.dellOrso, 
+              x = "sample", y = "detected", colour_by = "discard", point_size = 0.3) +
+    scale_y_log10() +
+    ggtitle("Total counts") +
+    guides(colour =  guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90)),
+  ncol = 1
+)
+# De Michelis
+
+
 
 # Discard outliers
 sce.dellOrso.f <- sce.dellOrso[, sce.dellOrso$discard == FALSE]
