@@ -121,6 +121,23 @@ checkDiagnosticPlots <- function(sce) {
   )
 }
 
+checkForEmptyDroplets <- function(sce) {
+  #' Checks for empty droplets and subsets sce to retain only detected cells
+  # 'NOTE: # CellRanger v3 automatically performs cell calling so there is no need for calling emptyDrops()
+  
+  set.seed(100)
+  # Distinguish between droplets containing cells and ambient RNA
+  e.out <- emptyDrops(counts(sce),
+                      lower = 100,
+                      test.ambient = TRUE)
+  # Summarize the results
+  print(substitute(sce))
+  print(summary(e.out))
+  # Subset sce object to retain only the detected cells
+  sce <- sce[, which(e.out$FDR <= 0.001)]
+  return(sce)
+}
+
 
 #####################
 ### Load data ###
@@ -318,7 +335,7 @@ remove(GSE126834_tot2)
 # Identifying outliers
 #  - Outliers can be detected based on median absolute deviation (MAD) from the median value
 #  - A value is considered an outlier if it is more than 3 MADs from the median in the "problematic" direction
-#######################
+# --------------------------------------------------------------- #
 
 # Remove genes that are expressed in less than 3 cells
 sce.dellOrso <- removeGeneExpLessThanX(sce.dellOrso, 3)
@@ -351,30 +368,8 @@ for (n in names(sce.deMicheli)) {
   print(summary(sce.deMicheli[[n]]$discard))
 }
 
-# Plot QC
-# Dell'Orso
-gridExtra::grid.arrange(
-  plotColData(sce.dellOrso, 
-              x = "sample", y = "sum", colour_by = "discard", point_size = 0.3) +
-    scale_y_log10() +
-    ggtitle("Total counts") +
-    guides(colour =  guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90)),
-  plotColData(sce.dellOrso, 
-              x = "sample", y = "detected", colour_by = "discard", point_size = 0.3) +
-    scale_y_log10() +
-    ggtitle("Total counts") +
-    guides(colour =  guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90)),
-  ncol = 1
-)
-# De Michelis
-
-
-
 # Discard outliers
 sce.dellOrso.f <- sce.dellOrso[, sce.dellOrso$discard == FALSE]
-
 
 sce.deMicheli.f <- sce.deMicheli
 for (n in names(sce.deMicheli.f)) {
@@ -386,52 +381,12 @@ saveRDS(sce.deMicheli.f, file = "sce_deMicheli_f")
 saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
 
 
-#######################
-# QC diagnostic plots #
-# Motivation: It is good practice to inspect the distributions of QC metrics to identify possible problems
-#  - in ideal case we would see normal distributions that would justify the 3 MAD treshold used in outlier detection
-
-# Check if QC metrics correlate in the data sets
-checkQCMetricCorrelation(sce.dellOrso.f)
-
-for (n in names(sce.deMicheli.f)) {
-  checkQCMetricCorrelation(sce.deMicheli.f[[n]])
-}
-
-# Check the relationship between total counts vs. mito%
-checkDiagnosticPlots(sce.dellOrso.f)
-for (n in names(sce.deMicheli.f)) {
-  checkDiagnosticPlots(sce.deMicheli.f[[n]])
-}
-
-#######################
-
-#######################
-# Cell calling
-# - Motivation: Call cells from empty droplets based on the observed expression profiles.
-# - In practice: emptyDrops() function tests whether the expression profile for each cell barcode is significantly different from the ambient RNA pool
-#    * This allows us to discriminate between well-sequenced empty droplets and droplets derived from cells with little RNA
-
-# !! Move to the utility functions
-
-checkForEmptyDroplets <- function(sce) {
-  # NOTE: # CellRanger v3 automatically performs cell calling so there is no need for calling emptyDrops()
-  set.seed(100)
-  # Distinguish between droplets containing cells and ambient RNA
-  e.out <- emptyDrops(counts(sce),
-                      lower = 100,
-                      test.ambient = TRUE)
-  # Summarize the results
-  summary(e.out)
-  # Subset sce object to retain only the detected cells
-  sce <- sce[, which(e.out$FDR <= 0.001)]
-  return(sce)
-}
-#######################
-
 #####################
 ### Normalization ###
 #####################
+# --------------------------------------------------------------- #
+# Notes about normalization
+# --------------------------------------------------------------- #
 # Motivation: There are systematic differences in seq. coverage between libraries. These differences arise from technical differences.
 #             Normalization aims to remove these differences such that they do not interfere with comparisons of the expression profiles between cells
 
@@ -445,6 +400,7 @@ checkForEmptyDroplets <- function(sce) {
 #         + -> log-values represent log-fold changes in expression
 #  - Normalization by deconvolution: normalize on summed expression values from pools of cells
 #     * quickCluster() + calculateSumFactors()
+# --------------------------------------------------------------- #
 
 performNormalization(sce.dellOrso.f)
 for(n in names(sce.deMicheli.f)) {
