@@ -261,7 +261,7 @@ for (n in names(sce.deMicheli)) {
 
 # Save objects
 saveRDS(sce.dellOrso, file = "sce_dellOrso_qc")
-saveRDS(sce.deMicheli, file = "sce_dellMicheli_qc")
+saveRDS(sce.deMicheli, file = "sce_deMicheli_qc")
 
 # Identify outliers (low quality cells)
 sce.dellOrso$discard <- findOutliers(sce.dellOrso)
@@ -278,8 +278,35 @@ for (n in names(sce.deMicheli)) {
   print(summary(sce.deMicheli[[n]]$discard))
 }
 
-#TODO: check if QC metrics correlate
-#TODO: plot QC results
+# Check if QC metrics correlate
+cdf.dellOrso <- colData(sce.dellOrso)[c("subsets_Mito_percent", "sum", "detected")]
+cors.dellOrso <- cor(as.matrix(cdf.dellOrso))
+cors.dellOrso
+
+for(n in names(sce.deMicheli)) {
+  cdf <- colData(sce.deMicheli[[n]])[c("subsets_Mito_percent", "sum", "detected")]
+  cors <- cor(as.matrix(cdf))
+  print(cors)
+}
+
+# Plot QC Dell'Orso
+# TODO: subset_Mito_percent is 0 in every cell so it cannot be plotted
+gridExtra::grid.arrange(
+  plotColData(sce.dellOrso, x = "sample", y = "sum", colour_by = "discard", point_size = 0.3) +
+    scale_y_log10() +
+    ggtitle("Total counts") +
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+  plotColData(sce.dellOrso, x = "sample", y = "detected", colour_by = "discard", point_size = 0.3) +
+    scale_y_log10() +
+    ggtitle("Total counts") +
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+  ncol = 1
+)
+
+# Plot QC De Micheli
+#TODO: plotting the QC values from De Micheli is problematic because each sample is in its own index in the list
 
 # Discard outliers
 sce.dellOrso.f <- sce.dellOrso[, sce.dellOrso$discard == FALSE]
@@ -291,7 +318,6 @@ for (n in names(sce.deMicheli.f)) {
 
 #TODO: check for cell type enrichment in the discarded pool
 #TODO: plot gene logFC between discarded and kept cells (blue = mitochondrial genes)
-
 
 # Save objects
 saveRDS(sce.deMicheli.f, file = "sce_deMicheli_f")
@@ -341,7 +367,7 @@ dellOrso.deconv.sf <- sizeFactors(sce.dellOrso.n)
 summary(dellOrso.deconv.sf)
 
 # Plot library size factor vs. deconvolution size factor
-plot(sce.dellOrso.lib.sf, dellOrso.deconv.sf, xlab="Library size factor",
+plot(dellOrso.lib.sf, dellOrso.deconv.sf, xlab="Library size factor",
      ylab="Deconvolution size factor", log='xy', pch=16)
 abline(a=0, b=1, col="red")
 
@@ -355,12 +381,24 @@ saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n")
 # De Micheli et al.
 # --------------------------------------------------------------- #
 # Scaling normalization & log-transform for each sample
-for(n in names(sce.dellOrso.n)) {
+for(n in names(sce.deMicheli.n)) {
+  print(n)
+  lib.sf <- librarySizeFactors(sce.deMicheli.n[[n]])
+  print(summary(lib.sf))
+  
   set.seed(100)
   clust <- quickCluster(sce.deMicheli.n[[n]])
   sce.deMicheli.n[[n]] <- computeSumFactors(sce.deMicheli.n[[n]],
                                             cluster = clust,
                                             min.mean = 0.1)
+  
+  deconv.sf <- sizeFactors(sce.deMicheli.n[[n]])
+  print(summary(deconv.sf))
+  
+  plot(lib.sf, deconv.sf, xlab = "Library size factor", ylab = "Deconvolution size factor",
+       log = "xy", pch = 16)
+  abline(a=0, b=1, col="red")
+  
   sce.deMicheli.n[[n]] <- logNormCounts(sce.deMicheli.n[[n]])
 }
 
@@ -369,6 +407,36 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 
 
 #TODO: plot library size factor vs. deconvolution size factor
+
+
+#########################################
+### Cell cycle scoring and regression ###
+#########################################
+# --------------------------------------------------------------- #
+# Notes about cell cycle scoring and regression
+# --------------------------------------------------------------- #
+# Solution 1: we assign each cell a score, based on its expression of G2/M and S phase markers. Cells expressing neither are likely in G1 phase
+
+# In practice:
+#  - We assign scores in the CellCycleScoring function, which stores in object metadata:
+#     * S and G2/M scores
+#     * predicted classification of each cell in either G2M, S or G1 phase.
+# - subtract ('regress out') this source of heterogeneity from the data.
+#    * scaleData(): For each gene, Seurat models the relationship between gene expression and the S and G2M cell cycle scores.
+#    * ScaleData(x, vars.to.regress = c("S.Score", "G2M.Score") ...)
+
+# --------
+
+# Solution 2: When analyzing differentiation processes, an alternative workflow should be used
+# - Here, regressing out all cell cycle effects can blur the distinction between stem and progenitor cells as well.
+# - As an alternative, we suggest regressing out the difference between the G2M and S phase scores.
+# - This means that signals separating non-cycling cells and cycling cells will be maintained, but differences in cell cycle
+#   phase amongst proliferating cells (which are often uninteresting), will be regressed out of the data
+
+# In practice:
+# - ScaleData(x, vars.to.regress = "CC.Difference" ...)
+# --------------------------------------------------------------- #
+
 
 ###############################################
 ### Feature selection & dimension reduction ###
@@ -379,15 +447,25 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 #sce.dellOrso.n <- readRDS("sce_dellOrso_n")
 
 # Model per-gene variance (technical & biological variation)
-dec.dellOrso <- modelGeneVar(sce.dellOrso.n,
-                             block = sce.dellOrso.n$sample)
+dec.dellOrso <- modelGeneVar(sce.dellOrso.n)
 
-#TODO: visualize the fit
+#Visualize the fit
+fit1 <- metadata(dec.dellOrso)
+plot(fit1$mean, fit1$var, xlab = "Mean of log-expression", ylab = "Variance of log-expression")
+curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 
 # Define the highly variable genes (HVGs) and perform dimension reduction
 hvgs.dellOrso <- getTopHVGs(dec.dellOrso, prop = 0.1)
 sce.dellOrso.n <- runPCA(sce.dellOrso.n, subset_row = hvgs.dellOrso)
 plotReducedDim(sce.dellOrso.n, dimred = "PCA", colour_by = "sample")
+
+#TODO: "percentVar" attribute not found.
+#percent.var.dellOrso <- attr(reducedDim(sce.dellOrso.n, "percentVar"))
+#chosen.elbow.dellOrso <- PCAtools::findElbowPoint(percent.var)
+#chosen.elbow.dellOrso
+#par(mfrow=c(1,1))
+#plot(percent.var.dellOrso, xlab = "PC", ylab = "Variance explained (%)")
+#abline(v=chosen.elbow.dellOrso, col = "red")
 
 # Remove PCs corresponding to technical noise
 set.seed(123)
@@ -409,7 +487,13 @@ dec.deMicheli <- list(FACS_d0 = modelGeneVar(sce.deMicheli.n$FACS_d0),
                       FACS_d5 = modelGeneVar(sce.deMicheli.n$FACS_d5),
                       FACS_d7 = modelGeneVar(sce.deMicheli.n$FACS_d7))
 
-#TODO: visualize the fit
+# Visualize the fit
+for(n in names(dec.deMicheli)) {
+  fit <- metadata(dec.deMicheli[[n]])
+  plot(fit$mean, fit$var,  xlab = "Mean of log-expression", ylab = "Variance of log-expression")
+  curve(fit$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
+}
+
 
 # Define HVGs, perform dimension reduction, and remove PCs corresponding to technical noise
 denoised.sce.deMicheli <- list()
@@ -418,14 +502,21 @@ for(n in names(sce.deMicheli.n)) {
   print(n)
   hvgs <- getTopHVGs(dec.deMicheli[[n]], prop = 0.1)
   sce.deMicheli.n[[n]] <- runPCA(sce.deMicheli.n[[n]], subset_row = hvgs)
+  
+  plotReducedDim(sce.deMicheli.n[[n]], dimred = "PCA")
+  
+  #TODO: "percentVar" attribute not found.
+  #percent.var <- attr(reducedDim(sce.deMicheli.n[[n]], "percentVar"))
+  #chosen.elbow <- PCAtools::findElbowPoint(percent.var)
+  #print(chosen.elbow)
+  #plot(percent.var, xlab = "PC", ylab = "Variance explained (%)")
+  #abline(v = chosen.elbow, col="red")
+  
+  set.seed(123)
   denoised.sce.deMicheli[[n]] <- denoisePCA(sce.deMicheli.n[[n]],
                                             technical = dec.deMicheli[[n]],
                                             subset.row = hvgs)
   }
-
-#TODO: plot reduced dimensions
-#TODO: find elbow point
-#TODO: plot % of variance explained by PCs
 
 # Save sce object
 saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
@@ -441,18 +532,44 @@ for(n in names(denoised.sce.deMicheli)) {
 ##################
 ### Clustering ###
 ##################
-# Load data sets
-#denoised.sce.deMicheli <- readRDS("denoised_sce_deMicheli")
-#denoised.sce.dellOrso <- readRDS("denoised_sce_dellOrso")
-#sce.deMicheli.n <- readRDS("sce_deMicheli_n")
-#sce.dellOrso.n <- readRDS("sce_dellOrso_n")
-
 # --------------------------------------------------------------- #
 # Dell'Orso et al.
 # --------------------------------------------------------------- #
+# Perform clustering
 snng.dellOrso <- buildSNNGraph(sce.dellOrso.n, d = 5)
+clust.dellOrso <- igraph::cluster_louvain(snng.dellOrso)$membership
+sce.dellOrso.n$cluster <- factor(clust.dellOrso)
 
+set.seed(123)
+reducedDim(sce.dellOrso.n, "force") <- igraph::layout_with_fr(snng.dellOrso)
+table(clust.dellOrso)
 
+# Plot results
+plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "force")
+plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "PCA")
+
+sce.dellOrso.n <- runUMAP(sce.dellOrso.n, dimred = "PCA", n_dimred = 5)
+plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "UMAP")
+
+# --------------------------------------------------------------- #
+# De Micheli et al.
+# --------------------------------------------------------------- #
+for(n in names(sce.deMicheli.n)) {
+  # Perform clustering
+  snng <- buildSNNGraph(sce.deMicheli.n[[n]], d = 5)
+  clust <- igraph::cluster_louvain(snng)$membership
+  sce.deMicheli.n[[n]]$cluster <- factor(clust)
+  
+  set.seed(123)
+  reducedDim(sce.deMicheli.n[[n]], "force") <- igraph::layout_with_fr(snng)
+  table(clust)
+  
+  # Plot results
+  plotReducedDim(sce.deMicheli.n[[n]], dimred = "force")
+  plotReducedDim(sce.deMicheli.n[[n]], dimred = "PCA")
+  sce.deMicheli.n[[n]] <- runUMAP(sce.deMicheli.n[[n]], dimred = "PCA", n_dimred = 5)
+  plotReducedDim(sce.deMicheli.n[[n]], dimred = "UMAP")
+}
 
 
 
