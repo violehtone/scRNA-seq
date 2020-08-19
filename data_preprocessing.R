@@ -1,14 +1,13 @@
 ####################
 ### Introduction ###
 ####################
-# This script is used for performing the data pre-processing of in vivo mouse scRNA-seq data sets from two studies:
-#   - De Micheli et al. (2020): GSE143435 and GSE143437 data sets
+# This script is used for performing the data pre-processing of scRNA-seq data sets from two studies:
+#   - De Micheli et al. (2020): GSE143435 data set
 #   - Dell'Orso et al. (2019): GSE126834 data set
 
 # The data sets are available in NCBI GEO:
 #   - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE126834
 #   - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE143435
-#   - https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE143437
 
 # Set working dir to the source file location
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -65,6 +64,7 @@ findOutliers <- function(sce) {
   # All outliers
   discard <- qc.lib.sce | qc.nexprs.sce | qc.mito.sce
   # Summarize the number of cells removed for each reason
+  print(substitute(sce))
   print(data.frame(LibSize = sum(qc.lib.sce),
                    NExprs = sum(qc.nexprs.sce),
                    MitoProp = sum(qc.mito.sce),
@@ -91,21 +91,13 @@ checkQCMetricCorrelation <- function(sce) {
 # --------------------------------------------------------------- #
 # De Micheli et al. (2020) 
 # --------------------------------------------------------------- #
-# Data set consists of non-FACS (GSE143437) and FACS (GSE143435) sorted samples.
-# Features: 
+# Data set consisting of 4 samples: d0, d2, d5, d7
+# Features:
 # - Injury: [Day 0, Day 2, Day 5, Day7]
-# - SampleID: FACS: [D0_FACS, D2_FACS, D5_FACS, D7_FACS]
-#             non-FACS: [D0_A, D0_B, D0_Cv3, D2_C, D2_D, D5_A, D5_B,
-#                        D5_C, D7_C, D7_D]
+# - sampleID: [D0_FACS, D2_FACS, D5_FACS, D7_FACS]
 # - cell_annotation: ["Anti-flammatory machophages", "FAPs", "B cells",
 #                     "MuSCs and progenitors", "B cells", "NK cells", ...]
 # --------------------------------------------------------------- #
-
-# Load GSE143437 data set (non-FACS sorted samples: d0, d2, d5, d7)
-GSE143437_meta <- read.delim("./../data/GSE143437/GSE143437_DeMicheli_MuSCatlas_metadata.txt")
-GSE143437_raw <- read.delim("./../data/GSE143437/GSE143437_DeMicheli_MuSCatlas_rawdata.txt")
-GSE143437_meta <- firstColumnToRowNames(GSE143437_meta)
-GSE143437_raw <- firstColumnToRowNames(GSE143437_raw)
 
 # Load GSE143435 data set (FACS sorted samples: d0, d2, d5, d7)
 GSE143435_meta_d0 <- read.delim("./../data/GSE143435/GSE143435_DeMicheli_D0_FACSatlas_metadata.txt")
@@ -147,9 +139,7 @@ samples <- c("./../data/GSE126834/homeostatic_muscs_1",
              "./../data/GSE126834/homeostatic_muscs_2",
              "./../data/GSE126834/inj_60h_muscs_1", 
              "./../data/GSE126834/inj_60h_muscs_2",
-             "./../data/GSE126834/primary_MB",
-             "./../data/GSE126834/total_muscle_wt_1",
-             "./../data/GSE126834/total_muscle_wt_2")
+             "./../data/GSE126834/primary_MB")
 
 # Read samples separately
 GSE126834_hom1 <- Read10X(data.dir = samples[1])
@@ -157,19 +147,13 @@ GSE126834_hom2 <- Read10X(data.dir = samples[2])
 GSE126834_inj1 <- Read10X(data.dir = samples[3])
 GSE126834_inj2 <- Read10X(data.dir = samples[4])
 GSE126834_mb <- Read10X(data.dir = samples[5])
-GSE126834_tot1 <- Read10X(data.dir = samples[6])
-GSE126834_tot2 <- Read10X(data.dir = samples[6])
 
 #########################
 ### Build SCE objects ###
 #########################
 # --------------------------------------------------------------- #
-# De Micheli et al. (2020): GSE143435 and GSE143437 data sets
+# De Micheli et al. (2020): GSE143435 data set
 # --------------------------------------------------------------- #
-# GSE143437 (non-FACS)
-sce_GSE143437 <- SingleCellExperiment(assays = list(counts = as.matrix(GSE143437_raw)),
-                                      colData = GSE143437_meta)
-
 # GSE143435 (FACS: d0, d2, d5, d7)
 sce_GSE143435_d0 <- SingleCellExperiment(assays = list(counts = as.matrix(GSE143435_raw_d0)),
                                          colData = GSE143435_meta_d0)
@@ -181,17 +165,10 @@ sce_GSE143435_d7 <- SingleCellExperiment(assays = list(counts = as.matrix(GSE143
                                          colData = GSE143435_meta_d7)
 
 # Combine data
-sce_GSE143435_d0$FACS <- TRUE
-sce_GSE143435_d2$FACS <- TRUE
-sce_GSE143435_d5$FACS <- TRUE
-sce_GSE143435_d7$FACS <- TRUE
-sce_GSE143437$FACS <- FALSE
-
 sce.deMicheli <- list(FACS_d0 = sce_GSE143435_d0,
                       FACS_d2 = sce_GSE143435_d2,
                       FACS_d5 = sce_GSE143435_d5,
-                      FACS_d7 = sce_GSE143435_d7,
-                      non_FACS = sce_GSE143437)
+                      FACS_d7 = sce_GSE143435_d7)
 
 # Save sce object
 saveRDS(sce.deMicheli, file = "sce_deMicheli")
@@ -201,12 +178,10 @@ remove(sce_GSE143435_d0)
 remove(sce_GSE143435_d2)
 remove(sce_GSE143435_d5)
 remove(sce_GSE143435_d7)
-remove(sce_GSE143437)
 remove(GSE143435_raw_d0)
 remove(GSE143435_raw_d2)
 remove(GSE143435_raw_d5)
 remove(GSE143435_raw_d7)
-remove(GSE143437_raw)
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. (2019): GSE126834 data set
@@ -217,9 +192,6 @@ sce_GSE126834_hom2 <- SingleCellExperiment(assays = list(counts = GSE126834_hom2
 sce_GSE126834_inj1 <- SingleCellExperiment(assays = list(counts = GSE126834_inj1))
 sce_GSE126834_inj2 <- SingleCellExperiment(assays = list(counts = GSE126834_inj2))
 sce_GSE126834_mb <- SingleCellExperiment(assays = list(counts = GSE126834_mb))
-sce_GSE126834_tot1 <- SingleCellExperiment(assays = list(counts = GSE126834_tot1))
-sce_GSE126834_tot2 <- SingleCellExperiment(assays = list(counts = GSE126834_tot2))
-
 
 # Assign sample groups to the sce objects
 sce_GSE126834_hom1$sample <- "homeostatic_MuSCs_rep1"
@@ -227,14 +199,11 @@ sce_GSE126834_hom2$sample <- "homeostatic_MuSCs_rep2"
 sce_GSE126834_inj1$sample <- "inj_60h_MuSCs_rep1"
 sce_GSE126834_inj2$sample <- "inj_60h_MuSCs_rep2"
 sce_GSE126834_mb$sample <- "Primary_MB"
-sce_GSE126834_tot1$sample <- "total_muscle_wt_rep1"
-sce_GSE126834_tot2$sample <- "total_muscle_wt_rep2"
 
 # Merge the samples into a single sce object (samples separated by the $sample column)
 sce.dellOrso <- cbind(sce_GSE126834_hom1, sce_GSE126834_hom2,
                       sce_GSE126834_inj1, sce_GSE126834_inj2,
-                      sce_GSE126834_mb, sce_GSE126834_tot1,
-                      sce_GSE126834_tot2)
+                      sce_GSE126834_mb)
 
 # Save sce object
 saveRDS(sce.dellOrso, file = "sce_dellOrso")
@@ -245,15 +214,11 @@ remove(sce_GSE126834_hom2)
 remove(sce_GSE126834_inj1)
 remove(sce_GSE126834_inj2)
 remove(sce_GSE126834_mb)
-remove(sce_GSE126834_tot1)
-remove(sce_GSE126834_tot2)
 remove(GSE126834_hom1)
 remove(GSE126834_hom2)
 remove(GSE126834_inj1)
 remove(GSE126834_inj2)
 remove(GSE126834_mb)
-remove(GSE126834_tot1)
-remove(GSE126834_tot2)
 
 #######################
 ### Quality control ###
@@ -313,6 +278,9 @@ for (n in names(sce.deMicheli)) {
   print(summary(sce.deMicheli[[n]]$discard))
 }
 
+#TODO: check if QC metrics correlate
+#TODO: plot QC results
+
 # Discard outliers
 sce.dellOrso.f <- sce.dellOrso[, sce.dellOrso$discard == FALSE]
 
@@ -320,6 +288,10 @@ sce.deMicheli.f <- sce.deMicheli
 for (n in names(sce.deMicheli.f)) {
   sce.deMicheli.f[[n]] <- sce.deMicheli.f[[n]][, sce.deMicheli.f[[n]]$discard == FALSE]
   }
+
+#TODO: check for cell type enrichment in the discarded pool
+#TODO: plot gene logFC between discarded and kept cells (blue = mitochondrial genes)
+
 
 # Save objects
 saveRDS(sce.deMicheli.f, file = "sce_deMicheli_f")
@@ -346,11 +318,8 @@ saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
 #  - Normalization by deconvolution: normalize on summed expression values from pools of cells
 #     * quickCluster() + calculateSumFactors()
 # --------------------------------------------------------------- #
-# (Load files)
 
-sce.deMicheli.f <- readRDS("sce_deMicheli_f")
-sce.dellOrso.f <- readRDS("sce_dellOrso_f")
-
+# Make new sce objects
 sce.dellOrso.n <- sce.dellOrso.f
 sce.deMicheli.n <- sce.deMicheli.f
 
@@ -386,11 +355,7 @@ saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n")
 # De Micheli et al.
 # --------------------------------------------------------------- #
 # Scaling normalization & log-transform for each sample
-# Due to computational issues, perform normalization on FACS / non-FACS samples separately
-
-# FACS samples
-facs_samples <- c("FACS_d0", "FACS_d2", "FACS_d5", "FACS_d7")
-for(n in facs_samples) {
+for(n in names(sce.dellOrso.n)) {
   set.seed(100)
   clust <- quickCluster(sce.deMicheli.n[[n]])
   sce.deMicheli.n[[n]] <- computeSumFactors(sce.deMicheli.n[[n]],
@@ -399,19 +364,11 @@ for(n in facs_samples) {
   sce.deMicheli.n[[n]] <- logNormCounts(sce.deMicheli.n[[n]])
 }
 
-# Non-FACS sample
-set.seed(100)
-clust <- quickCluster(sce.deMicheli.n[["non_FACS"]],
-                      block = sce.deMicheli.n[["non_FACS"]]$sampleID)
-sce.deMicheli.n[["non_FACS"]] <- computeSumFactors(sce.deMicheli.n[["non_FACS"]],
-                                                   cluster = clust,
-                                                   min.mean = 0.1)
-# Log-transformation of non-FACS sample
-sce.deMicheli.n[["non_FACS"]] <- logNormCounts(sce.deMicheli.n[["non_FACS"]])
-
 # Save normalized data
 saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 
+
+#TODO: plot library size factor vs. deconvolution size factor
 
 ###############################################
 ### Feature selection & dimension reduction ###
@@ -424,6 +381,8 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 # Model per-gene variance (technical & biological variation)
 dec.dellOrso <- modelGeneVar(sce.dellOrso.n,
                              block = sce.dellOrso.n$sample)
+
+#TODO: visualize the fit
 
 # Define the highly variable genes (HVGs) and perform dimension reduction
 hvgs.dellOrso <- getTopHVGs(dec.dellOrso, prop = 0.1)
@@ -448,8 +407,9 @@ saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
 dec.deMicheli <- list(FACS_d0 = modelGeneVar(sce.deMicheli.n$FACS_d0),
                       FACS_d2 = modelGeneVar(sce.deMicheli.n$FACS_d2),
                       FACS_d5 = modelGeneVar(sce.deMicheli.n$FACS_d5),
-                      FACS_d7 = modelGeneVar(sce.deMicheli.n$FACS_d7),
-                      non_FACS = modelGeneVar(sce.deMicheli.n$non_FACS))
+                      FACS_d7 = modelGeneVar(sce.deMicheli.n$FACS_d7))
+
+#TODO: visualize the fit
 
 # Define HVGs, perform dimension reduction, and remove PCs corresponding to technical noise
 denoised.sce.deMicheli <- list()
@@ -463,7 +423,38 @@ for(n in names(sce.deMicheli.n)) {
                                             subset.row = hvgs)
   }
 
+#TODO: plot reduced dimensions
+#TODO: find elbow point
+#TODO: plot % of variance explained by PCs
+
 # Save sce object
 saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
+
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce.dellOrso))
+
+for(n in names(denoised.sce.deMicheli)) {
+  print(n)
+  print(ncol(reducedDim(denoised.sce.deMicheli[[n]])))
+}
+
+##################
+### Clustering ###
+##################
+# Load data sets
+#denoised.sce.deMicheli <- readRDS("denoised_sce_deMicheli")
+#denoised.sce.dellOrso <- readRDS("denoised_sce_dellOrso")
+#sce.deMicheli.n <- readRDS("sce_deMicheli_n")
+#sce.dellOrso.n <- readRDS("sce_dellOrso_n")
+
+# --------------------------------------------------------------- #
+# Dell'Orso et al.
+# --------------------------------------------------------------- #
+snng.dellOrso <- buildSNNGraph(sce.dellOrso.n, d = 5)
+
+
+
+
+
 
 
