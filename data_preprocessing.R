@@ -60,7 +60,7 @@ findOutliers <- function(sce) {
   # Expressed genes outliers
   qc.nexprs.sce <- isOutlier(sce$detected, log = TRUE, type = "both", nmads = 4)
   # Mitochondrial content outliers
-  qc.mito.sce <- sce$subsets_Mito_percent > 20 # or isOutlier(sce$subsets_Mito_percent, type = "higher")
+  qc.mito.sce <- sce$subsets_Mito_percent > 20
   # All outliers
   discard <- qc.lib.sce | qc.nexprs.sce | qc.mito.sce
   # Summarize the number of cells removed for each reason
@@ -239,7 +239,6 @@ remove(GSE126834_mb)
 #     * sum = total count for each cell
 #     * detected = # of detected genes
 #     * subsets_mito_percent = % of reads mapped to mitochondrial transcripts
-#     * altexps_ERCC_percent = % of reads mapped to ERCC transcripts (spike-ins)
 #  - addPerCellQC() does the same but just appends te per-cell QC metrics to the colData of sce object
 
 # Identifying outliers
@@ -258,10 +257,6 @@ sce.dellOrso <- performCellQC(sce.dellOrso)
 for (n in names(sce.deMicheli)) {
   sce.deMicheli[[n]] <- performCellQC(sce.deMicheli[[n]])
   }
-
-# Save objects
-saveRDS(sce.dellOrso, file = "sce_dellOrso_qc")
-saveRDS(sce.deMicheli, file = "sce_deMicheli_qc")
 
 # Identify outliers (low quality cells)
 sce.dellOrso$discard <- findOutliers(sce.dellOrso)
@@ -406,11 +401,8 @@ for(n in names(sce.deMicheli.n)) {
 saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 
 
-#TODO: plot library size factor vs. deconvolution size factor
-
-
 #########################################
-### Cell cycle scoring and regression ###
+### TODO: Cell cycle scoring and regression ###
 #########################################
 # --------------------------------------------------------------- #
 # Notes about cell cycle scoring and regression
@@ -437,6 +429,29 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 # - ScaleData(x, vars.to.regress = "CC.Difference" ...)
 # --------------------------------------------------------------- #
 
+#TODO: Work in progress
+#TODO: How to convert sce object into Seurat object (?)
+# # Get a list of cell cycle markers (G2/M phase and S phase markers)
+# s.genes <- cc.genes$s.genes
+# g2m.genes <- cc.genes$g2m.genes
+# 
+# sce.dellOrso.seurat <- as.Seurat(sce.dellOrso.n, counts = "counts")
+# 
+# # Assign cell cycle scores
+# sce.dellOrso.n <- CellCycleScoring(sce.dellOrso.n, s.features = s.genes,
+#                                    g2m.features = g2m.genes, set.ident = TRUE)
+# 
+# # Visualize the cell cycle markers
+# RidgePlot(sce.dellOrso.n, features = c("PCNA", "TOP2A", "MCM6", "MKI67"), ncol = 2)
+# 
+# # Regress out cell cycle scores during data scaling
+# sce.dellOrso.n <- ScaleData(sce.dellOrso.n, vars.to.regress = c("S.Score", "G2M.Score"),
+#                             features = rownames(sce.dellOrso.n))
+# 
+# # Run PCA and verify that no clear clusters are seen
+# sce.dellOrso.n <- RunPCA(sce.dellOrso.n, features = c(s.genes, g2m.genes))
+
+
 
 ###############################################
 ### Feature selection & dimension reduction ###
@@ -444,8 +459,6 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 # --------------------------------------------------------------- #
 # Dell'Orso et al.
 # --------------------------------------------------------------- #
-#sce.dellOrso.n <- readRDS("sce_dellOrso_n")
-
 # Model per-gene variance (technical & biological variation)
 dec.dellOrso <- modelGeneVar(sce.dellOrso.n)
 
@@ -555,6 +568,7 @@ plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "UMAP")
 # De Micheli et al.
 # --------------------------------------------------------------- #
 for(n in names(sce.deMicheli.n)) {
+  print(n)
   # Perform clustering
   snng <- buildSNNGraph(sce.deMicheli.n[[n]], d = 5)
   clust <- igraph::cluster_louvain(snng)$membership
