@@ -270,88 +270,261 @@ remove(GSE126834_mb)
 #  - A value is considered an outlier if it is more than 3 MADs from the median in the "problematic" direction
 # --------------------------------------------------------------- #
 
-# Remove genes that are expressed in less than 3 cells
-sce.dellOrso <- removeGeneExpLessThanX(sce.dellOrso, 3)
+# load sce objects
+sce.deMicheli <- readRDS("sce_deMicheli")
 
-# Remove genes that are expressed in less than 3 cells, cells with <1000 UMIs, or cells with <200 genes
-for (n in names(sce.deMicheli)) {
-  print(n)
-  print(dim(sce.deMicheli[[n]]))
-  # Rmove genes expressed in less than 3 cells
-  sce.deMicheli[[n]] <- removeGeneExpLessThanX(sce.deMicheli[[n]], 3)
-  # Remove cells with < 1000 UMIs
-  sce.deMicheli[[n]] <- sce.deMicheli[[n]][, which(sce.deMicheli[[n]]$nUMI > 1000)]
-  # Remove cells with < 200 genes
-  sce.deMicheli[[n]] <- sce.deMicheli[[n]][, which(sce.deMicheli[[n]]$nGene > 200)]
-  print(dim(sce.deMicheli[[n]]))
-  }
-
-
+# --------------------------------------------------------------- #
+# De Micheli et al. data set
+# --------------------------------------------------------------- #
 # Compute per cell quality control metrics
-sce.dellOrso <- performCellQC(sce.dellOrso)
-for (n in names(sce.deMicheli)) {
-  sce.deMicheli[[n]] <- performCellQC(sce.deMicheli[[n]])
-  }
+sce.deMicheli <- addPerCellQC(sce.deMicheli, subsets = list(Mito=grep("mt-", rownames(sce.deMicheli))))
+rowData(sce.deMicheli)$mito <- FALSE
+rowData(sce.deMicheli)$mito[grep("^mt-", rownames(sce.deMicheli))] <- TRUE
 
-# Identify outliers (low quality cells)
-sce.dellOrso$discard <- findOutliers(sce.dellOrso, 3)
+#TODO: Find out why D5
 
-for (n in names(sce.deMicheli)) {
-  sce.deMicheli[[n]]$discard <- findOutliers(sce.deMicheli[[n]], 3)
-  }
+# Find outliers from total counts for each cell (sum)
+qc.lib.d0 <- isOutlier(sce.deMicheli$sum[sce.deMicheli$sampleID == "D0_FACS"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.d0)
+qc.lib.d2 <- isOutlier(sce.deMicheli$sum[sce.deMicheli$sampleID == "D2_FACS"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.d2)
+qc.lib.d5 <- isOutlier(sce.deMicheli$sum[sce.deMicheli$sampleID == "D5_FACS"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.d5)
+qc.lib.d7 <- isOutlier(sce.deMicheli$sum[sce.deMicheli$sampleID == "D7_FACS"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.d7)
 
-# Summarize outliers
-summary(sce.dellOrso$discard)
+# Find outliers from total number of detected genes
+qc.nexprs.d0 <- isOutlier(sce.deMicheli$detected[sce.deMicheli$sampleID == "D0_FACS"], log = TRUE, type = "both", nmads = 3)
+summary(qc.nexprs.d0)
+qc.nexprs.d2 <- isOutlier(sce.deMicheli$detected[sce.deMicheli$sampleID == "D2_FACS"], log = TRUE, type = "both", nmads = 3)
+summary(qc.nexprs.d2)
+qc.nexprs.d5 <- isOutlier(sce.deMicheli$detected[sce.deMicheli$sampleID == "D5_FACS"], log = TRUE, type = "both", nmads = 3)
+summary(qc.nexprs.d5)
+qc.nexprs.d7 <- isOutlier(sce.deMicheli$detected[sce.deMicheli$sampleID == "D7_FACS"], log = TRUE, type = "both", nmads = 3)
+summary(qc.nexprs.d7)
 
-for (n in names(sce.deMicheli)) {
-  print(n)
-  print(summary(sce.deMicheli[[n]]$discard))
-}
+# Find outliers from percentage of reads mapped to mitochondrial transcripts
+qc.mito.d0 <- sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D0_FACS"] > 20
+summary(qc.mito.d0)
+qc.mito.d2 <- sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D2_FACS"] > 20
+summary(qc.mito.d2)
+qc.mito.d5 <- sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D5_FACS"] > 20
+summary(qc.mito.d5)
+qc.mito.d7 <- sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D7_FACS"] > 20
+summary(qc.mito.d7)
 
 # Check if QC metrics correlate
-cdf.dellOrso <- colData(sce.dellOrso)[c("subsets_Mito_percent", "sum", "detected")]
-cors.dellOrso <- cor(as.matrix(cdf.dellOrso))
-cors.dellOrso
+cdf.deMicheli <- colData(sce.deMicheli)[c("subsets_Mito_percent","sum","detected")]
+cors.deMicheli <- cor(as.matrix(cdf.deMicheli))
+cors.deMicheli
 
-for(n in names(sce.deMicheli)) {
-  cdf <- colData(sce.deMicheli[[n]])[c("subsets_Mito_percent", "sum", "detected")]
-  cors <- cor(as.matrix(cdf))
-  print(cors)
-}
+# Combine discards
+discard.d0 <- qc.lib.d0 | qc.nexprs.d0 | qc.mito.d0
+discard.d2 <- qc.lib.d2 | qc.nexprs.d2 | qc.mito.d2
+discard.d5 <- qc.lib.d5 | qc.nexprs.d5 | qc.mito.d5
+discard.d7 <- qc.lib.d7 | qc.nexprs.d7 | qc.mito.d7
 
-# Plot QC Dell'Orso
-# TODO: subset_Mito_percent is 0 in every cell so it cannot be plotted
+# Summarize the number of cells removed for each reason
+discardSummary.d0 <- DataFrame(LibSize = sum(qc.lib.d0),
+                               NExprs = sum(qc.nexprs.d0),
+                               MitoProp = sum(qc.mito.d0),
+                               Total = sum(discard.d0))
+discardSummary.d2 <- DataFrame(LibSize = sum(qc.lib.d2),
+                               NExprs = sum(qc.nexprs.d2),
+                               MitoProp = sum(qc.mito.d2),
+                               Total = sum(discard.d2))
+discardSummary.d5 <- DataFrame(LibSize = sum(qc.lib.d5),
+                               NExprs = sum(qc.nexprs.d5),
+                               MitoProp = sum(qc.mito.d5),
+                               Total = sum(discard.d5))
+discardSummary.d7 <- DataFrame(LibSize = sum(qc.lib.d7),
+                               NExprs = sum(qc.nexprs.d7),
+                               MitoProp = sum(qc.mito.d7),
+                               Total = sum(discard.d7))
+
+discardSummary.d0
+discardSummary.d2
+discardSummary.d5
+discardSummary.d7
+
+sce.deMicheli$discard <- c(discard.d0, discard.d2, discard.d5, discard.d7)
+
+# Plot Quality control metrics
 gridExtra::grid.arrange(
-  plotColData(sce.dellOrso, x = "sample", y = "sum", colour_by = "discard", point_size = 0.3) +
+  plotColData(sce.deMicheli, x = "sampleID", y = "sum", colour_by = "discard", point_size = 0.3) +
     scale_y_log10() +
     ggtitle("Total counts") +
     guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
-  plotColData(sce.dellOrso, x = "sample", y = "detected", colour_by = "discard", point_size = 0.3) +
+  plotColData(sce.deMicheli, x = "sampleID", y = "detected", colour_by = "discard", point_size = 0.3) +
     scale_y_log10() +
     ggtitle("Total counts") +
     guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+  plotColData(sce.deMicheli, x = "sampleID", y = "subsets_Mito_percent", colour_by = "discard", point_size = 0.3) +
+    scale_y_log10() +
+    ggtitle("Total counts") +
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+  plotColData(sce.deMicheli, x="sampleID", y="percent_top_500",colour_by = "discard",point_size=0.3) + 
+    ggtitle("Percent top 500 genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
   ncol = 1
 )
 
-# Plot QC De Micheli
-#TODO: plotting the QC values from De Micheli is problematic because each sample is in its own index in the list
+# Filter outliers
+sce.deMicheli.f <- sce.deMicheli[, sce.deMicheli$discard == FALSE]
 
-# Discard outliers
+# Check for cell type enrichments in the discarded pool
+lost <- calculateAverage(counts(sce.deMicheli)[,c(discardSummary.d0, discardSummary.d2, discardSummary.d5, discardSummary.d7)])
+kept <- calculateAverage(counts(sce.deMicheli)[,!c(discardSummary.d0, discardSummary.d2, discardSummary.d5, discardSummary.d7)])
+
+library(edgeR)
+logged <- cpm(cbind(lost, kept), log=TRUE, prior.count=2)
+logFC <- logged[,1] - logged[,2]
+abundance <- rowMeans(logged)
+
+# Plot gene logFC between discarded and kept cells (blue = mitochondrial genes)
+
+plot(abundance, logFC, xlab="Average count", ylab="Log-FC (lost/kept)", pch=16)
+points(abundance[rowData(sce.deMicheli)$mito==TRUE], logFC[rowData(sce.deMicheli)$mito==TRUE], col="dodgerblue", pch=16)
+
+changed <- logFC>0.5
+
+# Up in discarded
+rownames(sce.deMicheli)[changed]
+
+# Save filtered sce file
+saveRDS(sce.deMicheli.f, file = "sce_deMicheli_f")
+
+
+# --------------------------------------------------------------- #
+# Dell'Orso et al. data set
+# --------------------------------------------------------------- #
+# Compute per cell quality control metrics
+sce.dellOrso <- addPerCellQC(sce.dellOrso, subsets = list(Mito=grep("mt-", rownames(sce.dellOrso))))
+rowData(sce.dellOrso)$mito <- FALSE
+rowData(sce.dellOrso)$mito[grep("^mt-", rownames(sce.dellOrso))] <- TRUE
+
+# Find outliers from total counts for each cell (sum)
+qc.lib.hom1 <- isOutlier(sce.dellOrso$sum[sce.dellOrso$sample == "homeostatic_MuSCs_rep1"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.hom1)
+qc.lib.hom2 <- isOutlier(sce.dellOrso$sum[sce.dellOrso$sample == "homeostatic_MuSCs_rep2"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.hom2)
+qc.lib.inj1 <- isOutlier(sce.dellOrso$sum[sce.dellOrso$sample == "inj_60h_MuSCs_rep1"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.inj1)
+qc.lib.inj2 <- isOutlier(sce.dellOrso$sum[sce.dellOrso$sample == "inj_60h_MuSCs_rep2"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.inj2)
+qc.lib.pmb <- isOutlier(sce.dellOrso$sum[sce.dellOrso$sample == "Primary_MB"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.pmb)
+
+#Find outliers from total number of detected genes
+qc.nexprs.hom1 <- isOutlier(sce.dellOrso$detected[sce.dellOrso$sample == "homeostatic_MuSCs_rep1"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.hom1)
+qc.nexprs.hom2 <- isOutlier(sce.dellOrso$detected[sce.dellOrso$sample == "homeostatic_MuSCs_rep2"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.hom2)
+qc.nexprs.inj1 <- isOutlier(sce.dellOrso$detected[sce.dellOrso$sample == "inj_60h_MuSCs_rep1"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.inj1)
+qc.nexprs.inj2 <- isOutlier(sce.dellOrso$detected[sce.dellOrso$sample == "inj_60h_MuSCs_rep2"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.inj2)
+qc.nexprs.pmb <- isOutlier(sce.dellOrso$detected[sce.dellOrso$sample == "Primary_MB"], log = TRUE, type = "both", nmads = 3)
+summary(qc.lib.pmb)
+
+# Find outliers from percentage of reads mapped to mitochondrial transcripts
+qc.mito.hom1 <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "homeostatic_MuSCs_rep1"] > 20
+summary(qc.mito.hom1)
+qc.mito.hom2 <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "homeostatic_MuSCs_rep2"] > 20
+summary(qc.mito.hom2)
+qc.mito.inj1 <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "inj_60h_MuSCs_rep1"] > 20
+summary(qc.mito.inj1)
+qc.mito.inj2 <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "inj_60h_MuSCs_rep2"] > 20
+summary(qc.mito.inj2)
+qc.mito.pmb <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "Primary_MB"] > 20
+summary(qc.lib.pmb)
+
+# Check if QC metrics correlate
+cdf.dellOrso <- colDate(sce.dellOrso)[c("subsets_Mito_percent","sum","detected")]
+cors.dellOrso <- cor(as.matrix(cdf.dellOrso))
+cors.dellOrso
+
+# Combine discards
+discard.hom1 <- qc.lib.hom1 | qc.nexprs.hom1 | qc.mito.hom1
+discard.hom2 <- qc.lib.hom2 | qc.nexprs.hom2 | qc.mito.hom2
+discard.inj1 <- qc.lib.inj1 | qc.nexprs.inj1 | qc.mito.inj1
+discard.inj2 <- qc.lib.inj2 | qc.nexprs.inj2 | qc.mito.inj2
+discard.pmb <- qc.lib.pmb | qc.nexprs.pmb | qc.mito.pmb
+
+# Summarize the number of cells removed for each reason
+discardSummary.hom1 <- DataFrame(LibSize = sum(qc.lib.hom1),
+                               NExprs = sum(qc.nexprs.hom1),
+                               MitoProp = sum(qc.mito.hom1),
+                               Total = sum(discard.hom1))
+discardSummary.hom2 <- DataFrame(LibSize = sum(qc.lib.hom2),
+                                 NExprs = sum(qc.nexprs.hom2),
+                                 MitoProp = sum(qc.mito.hom2),
+                                 Total = sum(discard.hom2))
+discardSummary.inj1 <- DataFrame(LibSize = sum(qc.lib.inj1),
+                                 NExprs = sum(qc.nexprs.inj1),
+                                 MitoProp = sum(qc.mito.inj1),
+                                 Total = sum(discard.inj1))
+discardSummary.inj2 <- DataFrame(LibSize = sum(qc.lib.inj2),
+                                 NExprs = sum(qc.nexprs.inj2),
+                                 MitoProp = sum(qc.mito.inj2),
+                                 Total = sum(discard.inj2))
+discardSummary.pmb <- DataFrame(LibSize = sum(qc.lib.pmb),
+                                 NExprs = sum(qc.nexprs.pmb),
+                                 MitoProp = sum(qc.mito.pmb),
+                                 Total = sum(discard.pmb))
+
+discardSummary.hom1
+discardSummary.hom2
+discardSummary.inj1
+discardSummary.inj2
+discardSummary.pmb
+
+sce.dellOrso$discard <- c(discard.hom1, discard.hom2, discard.inj1, discard.inj2, discard.pmb)
+
+# Plot QC metrics
+gridExtra::grid.arrange(
+  plotColData(sce.dellOrso, x="sample", y="sum",colour_by = "discard",point_size=0.3) +
+    scale_y_log10() + ggtitle("Total counts") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+  plotColData(sce.dellOrso, x="sample", y="detected",colour_by = "discard",point_size=0.3) + 
+    scale_y_log10() + ggtitle("Detected genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+  plotColData(sce.dellOrso, x="sample", y="subsets_Mito_percent",colour_by = "discard",point_size=0.3) + 
+    ggtitle("Percent mitochondrial reads") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+  plotColData(sce.dellOrso, x="sample", y="percent_top_500",colour_by = "discard",point_size=0.3) + 
+    ggtitle("Percent top 500 genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+  ncol=1
+)
+
+# Filter outliers
 sce.dellOrso.f <- sce.dellOrso[, sce.dellOrso$discard == FALSE]
 
-sce.deMicheli.f <- sce.deMicheli
-for (n in names(sce.deMicheli.f)) {
-  sce.deMicheli.f[[n]] <- sce.deMicheli.f[[n]][, sce.deMicheli.f[[n]]$discard == FALSE]
-  }
+# Check for cell type enrichment in the discarded pool
 
-#TODO: check for cell type enrichment in the discarded pool
-#TODO: plot gene logFC between discarded and kept cells (blue = mitochondrial genes)
+lost <- calculateAverage(counts(sce.dellOrso)[,c(discard.hom1, discard.hom2, discard.inj1, discard.inj2, discard.pmb)])
+kept <- calculateAverage(counts(sce.dellOrso)[,!c(discard.hom1, discard.hom2, discard.inj1, discard.inj2, discard.pmb)])
 
-# Save objects
-saveRDS(sce.deMicheli.f, file = "sce_deMicheli_f")
+logged <- cpm(cbind(lost, kept), log=TRUE, prior.count=2)
+logFC <- logged[,1] - logged[,2]
+abundance <- rowMeans(logged)
+
+# Plot gene logFC between discarded and kept cells (blue = mitochondrial genes)
+plot(abundance, logFC, xlab="Average count", ylab="Log-FC (lost/kept)", pch=16)
+points(abundance[rowData(sce.dellOrso)$mito==TRUE], logFC[rowData(sce.dellOrso)$mito==TRUE], col="dodgerblue", pch=16)
+
+changed <- logFC>0.5
+
+# Up in discarded
+rownames(sce.dellOrso)[changed]
+
+# Save filtered sce file
 saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
+
 
 
 #####################
@@ -383,8 +556,8 @@ sce.deMicheli.n <- sce.deMicheli.f
 # Dell'Orso et al.
 # --------------------------------------------------------------- #
 # Compute size factors
-dellOrso.lib.sf <- librarySizeFactors(sce.dellOrso.n)
-summary(dellOrso.lib.sf)
+lib.sf.dellOrso <- librarySizeFactors(sce.dellOrso.n)
+summary(lib.sf.dellOrso)
 
 set.seed(100)
 clust.dellOrso <- quickCluster(sce.dellOrso.n)
@@ -393,11 +566,11 @@ sce.dellOrso.n <- computeSumFactors(sce.dellOrso.n,
                                     cluster = clust.dellOrso,
                                     min.mean = 0.1)
 
-dellOrso.deconv.sf <- sizeFactors(sce.dellOrso.n)
-summary(dellOrso.deconv.sf)
+deconv.sf.dellOrso <- sizeFactors(sce.dellOrso.n)
+summary(deconv.sf.dellOrso)
 
 # Plot library size factor vs. deconvolution size factor
-plot(dellOrso.lib.sf, dellOrso.deconv.sf, xlab="Library size factor",
+plot(lib.sf.dellOrso, deconv.sf.dellOrso, xlab="Library size factor",
      ylab="Deconvolution size factor", log='xy', pch=16)
 abline(a=0, b=1, col="red")
 
@@ -410,27 +583,27 @@ saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n")
 # --------------------------------------------------------------- #
 # De Micheli et al.
 # --------------------------------------------------------------- #
-# Scaling normalization & log-transform for each sample
-for(n in names(sce.deMicheli.n)) {
-  print(n)
-  lib.sf <- librarySizeFactors(sce.deMicheli.n[[n]])
-  print(summary(lib.sf))
-  
-  set.seed(100)
-  clust <- quickCluster(sce.deMicheli.n[[n]])
-  sce.deMicheli.n[[n]] <- computeSumFactors(sce.deMicheli.n[[n]],
-                                            cluster = clust,
-                                            min.mean = 0.1)
-  
-  deconv.sf <- sizeFactors(sce.deMicheli.n[[n]])
-  print(summary(deconv.sf))
-  
-  plot(lib.sf, deconv.sf, xlab = "Library size factor", ylab = "Deconvolution size factor",
-       log = "xy", pch = 16)
-  abline(a=0, b=1, col="red")
-  
-  sce.deMicheli.n[[n]] <- logNormCounts(sce.deMicheli.n[[n]])
-}
+# Compute size factors
+lib.sf.deMicheli <- librarySizeFactors(sce.deMicheli.n)
+summary(lib.sf.deMicheli)
+
+set.seed(100)
+clust.deMicheli <- quickCluster(sce.deMicheli.n)
+
+sce.deMicheli.n <- computeSumFactors(sce.deMicheli.n,
+                                     cluster = clust.deMicheli,
+                                     min.mean = 0.1)
+
+deconv.sf.deMicheli <- sizeFactors(sce.deMicheli.n)
+summary(deconv.sf.deMicheli)
+
+# Plot library size factors vs. deconvolution size factor
+plot(lib.sf.deMicheli, deconv.sf.deMicheli, xlab="Library size factor",
+     ylab="Deconvolution size factor", log='xy', pch=16)
+abline(a=0, b=1, col="red")
+
+# Compute log-normalized expression values for each cell
+sce.deMicheli.n <- logNormCounts(sce.deMicheli.n)
 
 # Save normalized data
 saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
@@ -521,6 +694,9 @@ denoised.sce.dellOrso <- denoisePCA(sce.dellOrso.n,
                                     technical = dec.dellOrso,
                                     subset.row = hvgs.dellOrso)
 
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce.dellOrso))
+
 # Save sce object
 saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
 
@@ -529,53 +705,40 @@ saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
 # --------------------------------------------------------------- #
 #sce.deMicheli.n <- readRDS("sce_deMicheli_n")
 
+
 # Model per-gene variance (technical & biological variation)
-dec.deMicheli <- list(FACS_d0 = modelGeneVar(sce.deMicheli.n$FACS_d0),
-                      FACS_d2 = modelGeneVar(sce.deMicheli.n$FACS_d2),
-                      FACS_d5 = modelGeneVar(sce.deMicheli.n$FACS_d5),
-                      FACS_d7 = modelGeneVar(sce.deMicheli.n$FACS_d7))
+dec.deMicheli <- modelGeneVar(sce.deMicheli.n)
 
-# Visualize the fit
-for(n in names(dec.deMicheli)) {
-  fit <- metadata(dec.deMicheli[[n]])
-  plot(fit$mean, fit$var,  xlab = "Mean of log-expression", ylab = "Variance of log-expression")
-  curve(fit$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
-}
+#Visualize the fit
+fit1 <- metadata(dec.deMicheli)
+plot(fit1$mean, fit1$var, xlab = "Mean of log-expression", ylab = "Variance of log-expression")
+curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 
+# Define the highly variable genes (HVGs) and perform dimension reduction
+hvgs.deMicheli <- getTopHVGs(dec.deMicheli, prop = 0.1)
+sce.deMicheli.n <- runPCA(sce.deMicheli.n, subset_row = hvgs.deMicheli)
+plotReducedDim(sce.deMicheli.n, dimred = "PCA", colour_by = "sample")
 
-# Define HVGs, perform dimension reduction, and remove PCs corresponding to technical noise
-denoised.sce.deMicheli <- list()
+#TODO: "percentVar" attribute not found.
+#percent.var.deMicheli <- attr(reducedDim(sce.deMicheli.n, "percentVar"))
+#chosen.elbow.deMicheli <- PCAtools::findElbowPoint(percent.var)
+#chosen.elbow.deMicheli
+#par(mfrow=c(1,1))
+#plot(percent.var.deMicheli, xlab = "PC", ylab = "Variance explained (%)")
+#abline(v=chosen.elbow.deMicheli, col = "red")
 
-for(n in names(sce.deMicheli.n)) {
-  print(n)
-  hvgs <- getTopHVGs(dec.deMicheli[[n]], prop = 0.1)
-  sce.deMicheli.n[[n]] <- runPCA(sce.deMicheli.n[[n]], subset_row = hvgs)
-  
-  plotReducedDim(sce.deMicheli.n[[n]], dimred = "PCA")
-  
-  #TODO: "percentVar" attribute not found.
-  #percent.var <- attr(reducedDim(sce.deMicheli.n[[n]], "percentVar"))
-  #chosen.elbow <- PCAtools::findElbowPoint(percent.var)
-  #print(chosen.elbow)
-  #plot(percent.var, xlab = "PC", ylab = "Variance explained (%)")
-  #abline(v = chosen.elbow, col="red")
-  
-  set.seed(123)
-  denoised.sce.deMicheli[[n]] <- denoisePCA(sce.deMicheli.n[[n]],
-                                            technical = dec.deMicheli[[n]],
-                                            subset.row = hvgs)
-  }
+# Remove PCs corresponding to technical noise
+set.seed(123)
+denoised.sce.deMicheli <- denoisePCA(sce.deMicheli.n,
+                                    technical = dec.deMicheli,
+                                    subset.row = hvgs.deMicheli)
+
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce.deMicheli))
 
 # Save sce object
 saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
 
-# Dimensions of denoised PCA
-ncol(reducedDim(denoised.sce.dellOrso))
-
-for(n in names(denoised.sce.deMicheli)) {
-  print(n)
-  print(ncol(reducedDim(denoised.sce.deMicheli[[n]])))
-}
 
 ##################
 ### Clustering ###
@@ -602,24 +765,21 @@ plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "UMAP")
 # --------------------------------------------------------------- #
 # De Micheli et al.
 # --------------------------------------------------------------- #
-for(n in names(sce.deMicheli.n)) {
-  print(n)
-  # Perform clustering
-  snng <- buildSNNGraph(sce.deMicheli.n[[n]], d = 5)
-  clust <- igraph::cluster_louvain(snng)$membership
-  sce.deMicheli.n[[n]]$cluster <- factor(clust)
-  
-  set.seed(123)
-  reducedDim(sce.deMicheli.n[[n]], "force") <- igraph::layout_with_fr(snng)
-  table(clust)
-  
-  # Plot results
-  plotReducedDim(sce.deMicheli.n[[n]], dimred = "force")
-  plotReducedDim(sce.deMicheli.n[[n]], dimred = "PCA")
-  sce.deMicheli.n[[n]] <- runUMAP(sce.deMicheli.n[[n]], dimred = "PCA", n_dimred = 5)
-  plotReducedDim(sce.deMicheli.n[[n]], dimred = "UMAP")
-}
+# Perform clustering
+snng.deMicheli <- buildSNNGraph(sce.deMicheli.n, d = 5)
+clust.deMicheli <- igraph::cluster_louvain(snng.deMicheli)$membership
+sce.deMicheli.n$cluster <- factor(clust.deMicheli)
 
+set.seed(123)
+reducedDim(sce.deMicheli.n, "force") <- igraph::layout_with_fr(snng.deMicheli)
+table(clust.dellOrso)
+
+# Plot results
+plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "force")
+plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "PCA")
+
+sce.deMicheli.n <- runUMAP(sce.deMicheli.n, dimred = "PCA", n_dimred = 5)
+plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "UMAP")
 
 
 
