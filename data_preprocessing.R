@@ -53,12 +53,14 @@ performCellQC <- function(sce) {
 }
 
 
-findOutliers <- function(sce) {
-  #' Detect outliers based on median absolute deviation (MAD)
+findOutliers <- function(sce, n) {
+  #' Detect outliers based on median absolute deviation (MAD).
+  #' sce = single cell experiment object, n = MADs from median 
+  
   # Library size outliers
-  qc.lib.sce <- isOutlier(sce$sum, log = TRUE, type = "both", nmads = 4)
+  qc.lib.sce <- isOutlier(sce$sum, log = TRUE, type = "both", nmads = n)
   # Expressed genes outliers
-  qc.nexprs.sce <- isOutlier(sce$detected, log = TRUE, type = "both", nmads = 4)
+  qc.nexprs.sce <- isOutlier(sce$detected, log = TRUE, type = "both", nmads = n)
   # Mitochondrial content outliers
   qc.mito.sce <- sce$subsets_Mito_percent > 20
   # All outliers
@@ -117,12 +119,32 @@ GSE143435_meta_d5 <- firstColumnToRowNames(GSE143435_meta_d5)
 GSE143435_raw_d7 <- firstColumnToRowNames(GSE143435_raw_d7)
 GSE143435_meta_d7 <- firstColumnToRowNames(GSE143435_meta_d7)
 
-# Remove columns that do not exist in metadata
+# Remove cells that do not exist in metadata
 GSE143435_raw_d0 <- GSE143435_raw_d0 %>% select(rownames(GSE143435_meta_d0))
 GSE143435_raw_d2 <- GSE143435_raw_d2 %>% select(rownames(GSE143435_meta_d2))
 GSE143435_raw_d5 <- GSE143435_raw_d5 %>% select(rownames(GSE143435_meta_d5))
 GSE143435_raw_d7 <- GSE143435_raw_d7 %>% select(rownames(GSE143435_meta_d7))
 
+# Add zero counts to make the dimensions (genes) of data sets similar
+# d0
+GSE143435_raw_d0[setdiff(rownames(GSE143435_raw_d2), rownames(GSE143435_raw_d0)), ] <- 0
+GSE143435_raw_d0[setdiff(rownames(GSE143435_raw_d5), rownames(GSE143435_raw_d0)), ] <- 0
+GSE143435_raw_d0[setdiff(rownames(GSE143435_raw_d7), rownames(GSE143435_raw_d0)), ] <- 0
+# d2
+GSE143435_raw_d2[setdiff(rownames(GSE143435_raw_d0), rownames(GSE143435_raw_d2)), ] <- 0
+GSE143435_raw_d2[setdiff(rownames(GSE143435_raw_d5), rownames(GSE143435_raw_d2)), ] <- 0
+GSE143435_raw_d2[setdiff(rownames(GSE143435_raw_d7), rownames(GSE143435_raw_d2)), ] <- 0
+# d5
+GSE143435_raw_d5[setdiff(rownames(GSE143435_raw_d0), rownames(GSE143435_raw_d5)), ] <- 0
+GSE143435_raw_d5[setdiff(rownames(GSE143435_raw_d2), rownames(GSE143435_raw_d5)), ] <- 0
+GSE143435_raw_d5[setdiff(rownames(GSE143435_raw_d7), rownames(GSE143435_raw_d5)), ] <- 0
+# d7
+GSE143435_raw_d7[setdiff(rownames(GSE143435_raw_d0), rownames(GSE143435_raw_d7)), ] <- 0
+GSE143435_raw_d7[setdiff(rownames(GSE143435_raw_d2), rownames(GSE143435_raw_d7)), ] <- 0
+GSE143435_raw_d7[setdiff(rownames(GSE143435_raw_d5), rownames(GSE143435_raw_d7)), ] <- 0
+
+# Fix colnames of d5 metadata (for some reason it had percent.mito instead of percent_mito)
+names(GSE143435_meta_d5)[names(GSE143435_meta_d5) == "percent.mito"] <- "percent_mito"
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. (2019)
@@ -154,7 +176,7 @@ GSE126834_mb <- Read10X(data.dir = samples[5])
 # --------------------------------------------------------------- #
 # De Micheli et al. (2020): GSE143435 data set
 # --------------------------------------------------------------- #
-# GSE143435 (FACS: d0, d2, d5, d7)
+# merge raw data into a single object
 sce_GSE143435_d0 <- SingleCellExperiment(assays = list(counts = as.matrix(GSE143435_raw_d0)),
                                          colData = GSE143435_meta_d0)
 sce_GSE143435_d2 <- SingleCellExperiment(assays = list(counts = as.matrix(GSE143435_raw_d2)),
@@ -164,11 +186,9 @@ sce_GSE143435_d5 <- SingleCellExperiment(assays = list(counts = as.matrix(GSE143
 sce_GSE143435_d7 <- SingleCellExperiment(assays = list(counts = as.matrix(GSE143435_raw_d7)),
                                          colData = GSE143435_meta_d7)
 
-# Combine data
-sce.deMicheli <- list(FACS_d0 = sce_GSE143435_d0,
-                      FACS_d2 = sce_GSE143435_d2,
-                      FACS_d5 = sce_GSE143435_d5,
-                      FACS_d7 = sce_GSE143435_d7)
+# Merge samples into a single sce object
+sce.deMicheli <- cbind(sce_GSE143435_d0, sce_GSE143435_d2,
+                       sce_GSE143435_d5, sce_GSE143435_d7)
 
 # Save sce object
 saveRDS(sce.deMicheli, file = "sce_deMicheli")
@@ -182,6 +202,10 @@ remove(GSE143435_raw_d0)
 remove(GSE143435_raw_d2)
 remove(GSE143435_raw_d5)
 remove(GSE143435_raw_d7)
+remove(GSE143435_meta_d0)
+remove(GSE143435_meta_d2)
+remove(GSE143435_meta_d5)
+remove(GSE143435_meta_d7)
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. (2019): GSE126834 data set
@@ -248,9 +272,20 @@ remove(GSE126834_mb)
 
 # Remove genes that are expressed in less than 3 cells
 sce.dellOrso <- removeGeneExpLessThanX(sce.dellOrso, 3)
+
+# Remove genes that are expressed in less than 3 cells, cells with <1000 UMIs, or cells with <200 genes
 for (n in names(sce.deMicheli)) {
+  print(n)
+  print(dim(sce.deMicheli[[n]]))
+  # Rmove genes expressed in less than 3 cells
   sce.deMicheli[[n]] <- removeGeneExpLessThanX(sce.deMicheli[[n]], 3)
+  # Remove cells with < 1000 UMIs
+  sce.deMicheli[[n]] <- sce.deMicheli[[n]][, which(sce.deMicheli[[n]]$nUMI > 1000)]
+  # Remove cells with < 200 genes
+  sce.deMicheli[[n]] <- sce.deMicheli[[n]][, which(sce.deMicheli[[n]]$nGene > 200)]
+  print(dim(sce.deMicheli[[n]]))
   }
+
 
 # Compute per cell quality control metrics
 sce.dellOrso <- performCellQC(sce.dellOrso)
@@ -259,10 +294,10 @@ for (n in names(sce.deMicheli)) {
   }
 
 # Identify outliers (low quality cells)
-sce.dellOrso$discard <- findOutliers(sce.dellOrso)
+sce.dellOrso$discard <- findOutliers(sce.dellOrso, 3)
 
 for (n in names(sce.deMicheli)) {
-  sce.deMicheli[[n]]$discard <- findOutliers(sce.deMicheli[[n]])
+  sce.deMicheli[[n]]$discard <- findOutliers(sce.deMicheli[[n]], 3)
   }
 
 # Summarize outliers
