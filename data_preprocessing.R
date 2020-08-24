@@ -23,6 +23,7 @@ library(Seurat)
 library(dplyr)
 library(docstring)
 library(ggplot2)
+library(edgeR)
 
 #########################
 ### Utility functions ###
@@ -188,7 +189,8 @@ sce_GSE143435_d7 <- SingleCellExperiment(assays = list(counts = as.matrix(GSE143
 
 # Merge samples into a single sce object
 sce.deMicheli <- cbind(sce_GSE143435_d0, sce_GSE143435_d2,
-                       sce_GSE143435_d5, sce_GSE143435_d7)
+                       sce_GSE143435_d5, sce_GSE143435_d7,
+                       deparse.level = 1)
 
 # Save sce object
 saveRDS(sce.deMicheli, file = "sce_deMicheli")
@@ -227,7 +229,8 @@ sce_GSE126834_mb$sample <- "Primary_MB"
 # Merge the samples into a single sce object (samples separated by the $sample column)
 sce.dellOrso <- cbind(sce_GSE126834_hom1, sce_GSE126834_hom2,
                       sce_GSE126834_inj1, sce_GSE126834_inj2,
-                      sce_GSE126834_mb)
+                      sce_GSE126834_mb,
+                      deparse.level = 1)
 
 # Save sce object
 saveRDS(sce.dellOrso, file = "sce_dellOrso")
@@ -263,25 +266,22 @@ remove(GSE126834_mb)
 #     * sum = total count for each cell
 #     * detected = # of detected genes
 #     * subsets_mito_percent = % of reads mapped to mitochondrial transcripts
-#  - addPerCellQC() does the same but just appends te per-cell QC metrics to the colData of sce object
+#  - addPerCellQC() does the same but just appends the QC metrics to the colData of sce object
 
 # Identifying outliers
 #  - Outliers can be detected based on median absolute deviation (MAD) from the median value
 #  - A value is considered an outlier if it is more than 3 MADs from the median in the "problematic" direction
 # --------------------------------------------------------------- #
 
-# load sce objects
-sce.deMicheli <- readRDS("sce_deMicheli")
-
 # --------------------------------------------------------------- #
 # De Micheli et al. data set
 # --------------------------------------------------------------- #
+#sce.deMicheli <- readRDS("sce_deMicheli")
+
 # Compute per cell quality control metrics
 sce.deMicheli <- addPerCellQC(sce.deMicheli, subsets = list(Mito=grep("mt-", rownames(sce.deMicheli))))
 rowData(sce.deMicheli)$mito <- FALSE
 rowData(sce.deMicheli)$mito[grep("^mt-", rownames(sce.deMicheli))] <- TRUE
-
-#TODO: Find out why D5
 
 # Find outliers from total counts for each cell (sum)
 qc.lib.d0 <- isOutlier(sce.deMicheli$sum[sce.deMicheli$sampleID == "D0_FACS"], log = TRUE, type = "both", nmads = 3)
@@ -350,25 +350,21 @@ discardSummary.d7
 sce.deMicheli$discard <- c(discard.d0, discard.d2, discard.d5, discard.d7)
 
 # Plot Quality control metrics
+#TODO: find out why sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D5_FACS"] returns only zeros
 gridExtra::grid.arrange(
   plotColData(sce.deMicheli, x = "sampleID", y = "sum", colour_by = "discard", point_size = 0.3) +
     scale_y_log10() +
     ggtitle("Total counts") +
-    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
   plotColData(sce.deMicheli, x = "sampleID", y = "detected", colour_by = "discard", point_size = 0.3) +
     scale_y_log10() +
     ggtitle("Total counts") +
-    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
   plotColData(sce.deMicheli, x = "sampleID", y = "subsets_Mito_percent", colour_by = "discard", point_size = 0.3) +
-    scale_y_log10() +
     ggtitle("Total counts") +
-    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
   plotColData(sce.deMicheli, x="sampleID", y="percent_top_500",colour_by = "discard",point_size=0.3) + 
-    ggtitle("Percent top 500 genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+    ggtitle("Percent top 500 genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
   ncol = 1
 )
 
@@ -376,10 +372,9 @@ gridExtra::grid.arrange(
 sce.deMicheli.f <- sce.deMicheli[, sce.deMicheli$discard == FALSE]
 
 # Check for cell type enrichments in the discarded pool
-lost <- calculateAverage(counts(sce.deMicheli)[,c(discardSummary.d0, discardSummary.d2, discardSummary.d5, discardSummary.d7)])
-kept <- calculateAverage(counts(sce.deMicheli)[,!c(discardSummary.d0, discardSummary.d2, discardSummary.d5, discardSummary.d7)])
+lost <- calculateAverage(counts(sce.deMicheli)[,c(discard.d0, discard.d2, discard.d5, discard.d7)])
+kept <- calculateAverage(counts(sce.deMicheli)[,!c(discard.d0, discard.d2, discard.d5, discard.d7)])
 
-library(edgeR)
 logged <- cpm(cbind(lost, kept), log=TRUE, prior.count=2)
 logFC <- logged[,1] - logged[,2]
 abundance <- rowMeans(logged)
@@ -401,6 +396,8 @@ saveRDS(sce.deMicheli.f, file = "sce_deMicheli_f")
 # --------------------------------------------------------------- #
 # Dell'Orso et al. data set
 # --------------------------------------------------------------- #
+#sce.dellOrso <- readRDS("sce_dellOrso")
+
 # Compute per cell quality control metrics
 sce.dellOrso <- addPerCellQC(sce.dellOrso, subsets = list(Mito=grep("mt-", rownames(sce.dellOrso))))
 rowData(sce.dellOrso)$mito <- FALSE
@@ -443,7 +440,7 @@ qc.mito.pmb <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "Primary
 summary(qc.lib.pmb)
 
 # Check if QC metrics correlate
-cdf.dellOrso <- colDate(sce.dellOrso)[c("subsets_Mito_percent","sum","detected")]
+cdf.dellOrso <- colData(sce.dellOrso)[c("subsets_Mito_percent","sum","detected")]
 cors.dellOrso <- cor(as.matrix(cdf.dellOrso))
 cors.dellOrso
 
@@ -487,19 +484,22 @@ sce.dellOrso$discard <- c(discard.hom1, discard.hom2, discard.inj1, discard.inj2
 # Plot QC metrics
 gridExtra::grid.arrange(
   plotColData(sce.dellOrso, x="sample", y="sum",colour_by = "discard",point_size=0.3) +
-    scale_y_log10() + ggtitle("Total counts") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+    scale_y_log10() + 
+    ggtitle("Total counts") + 
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
   plotColData(sce.dellOrso, x="sample", y="detected",colour_by = "discard",point_size=0.3) + 
-    scale_y_log10() + ggtitle("Detected genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+    scale_y_log10() +
+    ggtitle("Detected genes") +
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
   plotColData(sce.dellOrso, x="sample", y="subsets_Mito_percent",colour_by = "discard",point_size=0.3) + 
-    ggtitle("Percent mitochondrial reads") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+    ggtitle("Percent mitochondrial reads") +
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
   plotColData(sce.dellOrso, x="sample", y="percent_top_500",colour_by = "discard",point_size=0.3) + 
-    ggtitle("Percent top 500 genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)),
+    ggtitle("Percent top 500 genes") +
+    guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
   ncol=1
 )
+
 
 # Filter outliers
 sce.dellOrso.f <- sce.dellOrso[, sce.dellOrso$discard == FALSE]
@@ -548,7 +548,7 @@ saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
 #     * quickCluster() + calculateSumFactors()
 # --------------------------------------------------------------- #
 
-# Make new sce objects
+# Make new sce objects for normalization purposes
 sce.dellOrso.n <- sce.dellOrso.f
 sce.deMicheli.n <- sce.deMicheli.f
 
@@ -615,7 +615,9 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 # --------------------------------------------------------------- #
 # Notes about cell cycle scoring and regression
 # --------------------------------------------------------------- #
-# Solution 1: we assign each cell a score, based on its expression of G2/M and S phase markers. Cells expressing neither are likely in G1 phase
+# Solution 1: 
+# we assign each cell a score, based on its expression of G2/M and S phase markers. 
+# Cells expressing neither are likely in G1 phase
 
 # In practice:
 #  - We assign scores in the CellCycleScoring function, which stores in object metadata:
@@ -625,9 +627,8 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 #    * scaleData(): For each gene, Seurat models the relationship between gene expression and the S and G2M cell cycle scores.
 #    * ScaleData(x, vars.to.regress = c("S.Score", "G2M.Score") ...)
 
-# --------
-
-# Solution 2: When analyzing differentiation processes, an alternative workflow should be used
+# Solution 2: 
+# When analyzing differentiation processes, an alternative workflow should be used
 # - Here, regressing out all cell cycle effects can blur the distinction between stem and progenitor cells as well.
 # - As an alternative, we suggest regressing out the difference between the G2M and S phase scores.
 # - This means that signals separating non-cycling cells and cycling cells will be maintained, but differences in cell cycle
@@ -636,6 +637,17 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 # In practice:
 # - ScaleData(x, vars.to.regress = "CC.Difference" ...)
 # --------------------------------------------------------------- #
+
+# Get a list of cell cycle markers (G2/M phase and S phase markers)
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+# --------------------------------------------------------------- #
+# Dell'Orso et al. data set
+# --------------------------------------------------------------- #
+# Convert sce to Seurat object
+seurat.dellOrso <- as.Seurat(sce.dellOrso.n, counts = "counts", data = "logcounts")
+
 
 #TODO: Work in progress
 #TODO: How to convert sce object into Seurat object (?)
