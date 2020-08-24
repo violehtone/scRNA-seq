@@ -44,49 +44,6 @@ removeGeneExpLessThanX <- function(data, x) {
   return(data)
 }
 
-
-performCellQC <- function(sce) {
-  #' Add per cell QC metrics and detect mitochondrial transcripts
-  location <- rowRanges(sce)
-  is.mito <- any(seqnames(location) == "MT")
-  sce <- addPerCellQC(sce, subsets = list(Mito = is.mito))
-  return(sce)
-}
-
-
-findOutliers <- function(sce, n) {
-  #' Detect outliers based on median absolute deviation (MAD).
-  #' sce = single cell experiment object, n = MADs from median 
-  
-  # Library size outliers
-  qc.lib.sce <- isOutlier(sce$sum, log = TRUE, type = "both", nmads = n)
-  # Expressed genes outliers
-  qc.nexprs.sce <- isOutlier(sce$detected, log = TRUE, type = "both", nmads = n)
-  # Mitochondrial content outliers
-  qc.mito.sce <- sce$subsets_Mito_percent > 20
-  # All outliers
-  discard <- qc.lib.sce | qc.nexprs.sce | qc.mito.sce
-  # Summarize the number of cells removed for each reason
-  print(substitute(sce))
-  print(data.frame(LibSize = sum(qc.lib.sce),
-                   NExprs = sum(qc.nexprs.sce),
-                   MitoProp = sum(qc.mito.sce),
-                   Total = sum(discard)))
-  
-  return(discard)
-}
-
-
-checkQCMetricCorrelation <- function(sce) {
-  #' Check if qc metrics correlate
-  cdf <- colData(sce)[c("subsets_Mito_percent", "sum", "detected")]
-  cors <- cor(as.matrix(cdf))
-  # Print the name of the input object and the correlation matrix
-  print(substitute(sce))
-  return(cors)
-}
-
-
 #####################
 ### Load data ###
 #####################
@@ -147,6 +104,17 @@ GSE143435_raw_d7[setdiff(rownames(GSE143435_raw_d5), rownames(GSE143435_raw_d7))
 # Fix colnames of d5 metadata (for some reason it had percent.mito instead of percent_mito)
 names(GSE143435_meta_d5)[names(GSE143435_meta_d5) == "percent.mito"] <- "percent_mito"
 
+# Add unique identifier for column names of each dataset
+colnames(GSE143435_raw_d0) <- paste(colnames(GSE143435_raw_d0), "d0", sep = "_")
+colnames(GSE143435_raw_d2) <- paste(colnames(GSE143435_raw_d2), "d2", sep = "_")
+colnames(GSE143435_raw_d5) <- paste(colnames(GSE143435_raw_d5), "d5", sep = "_")
+colnames(GSE143435_raw_d7) <- paste(colnames(GSE143435_raw_d7), "d7", sep = "_")
+
+rownames(GSE143435_meta_d0) <- paste(rownames(GSE143435_meta_d0), "d0", sep = "_")
+rownames(GSE143435_meta_d2) <- paste(rownames(GSE143435_meta_d2), "d2", sep = "_")
+rownames(GSE143435_meta_d5) <- paste(rownames(GSE143435_meta_d5), "d5", sep = "_")
+rownames(GSE143435_meta_d7) <- paste(rownames(GSE143435_meta_d7), "d7", sep = "_")
+
 # --------------------------------------------------------------- #
 # Dell'Orso et al. (2019)
 # --------------------------------------------------------------- #
@@ -170,6 +138,14 @@ GSE126834_hom2 <- Read10X(data.dir = samples[2])
 GSE126834_inj1 <- Read10X(data.dir = samples[3])
 GSE126834_inj2 <- Read10X(data.dir = samples[4])
 GSE126834_mb <- Read10X(data.dir = samples[5])
+
+# Add unique identifier for column names of each dataset
+colnames(GSE126834_hom1) <- paste(colnames(GSE126834_hom1), "hom1", sep = "_")
+colnames(GSE126834_hom2) <- paste(colnames(GSE126834_hom2), "hom2", sep = "_")
+colnames(GSE126834_inj1) <- paste(colnames(GSE126834_inj1), "inj1", sep = "_")
+colnames(GSE126834_inj2) <- paste(colnames(GSE126834_inj2), "inj2", sep = "_")
+colnames(GSE126834_mb) <- paste(colnames(GSE126834_mb), "mb", sep = "_")
+
 
 #########################
 ### Build SCE objects ###
@@ -276,7 +252,11 @@ remove(GSE126834_mb)
 # --------------------------------------------------------------- #
 # De Micheli et al. data set
 # --------------------------------------------------------------- #
-#sce.deMicheli <- readRDS("sce_deMicheli")
+sce.deMicheli <- readRDS("sce_deMicheli")
+
+length(unique((colnames(sce.deMicheli))))
+length((colnames(sce.deMicheli)))
+
 
 # Compute per cell quality control metrics
 sce.deMicheli <- addPerCellQC(sce.deMicheli, subsets = list(Mito=grep("mt-", rownames(sce.deMicheli))))
