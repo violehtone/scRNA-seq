@@ -1,7 +1,9 @@
 ####################
 ### Introduction ###
 ####################
-# This script is used for performing the data pre-processing of scRNA-seq data sets from two studies:
+# This script is used for performing the data pre-processing of 3 scRNA-seq data sets.
+# One dataset is primary data and the other two are used as reference datasets.
+# Reference data sets:
 #   - De Micheli et al. (2020): GSE143435 data set
 #   - Dell'Orso et al. (2019): GSE126834 data set
 
@@ -47,6 +49,19 @@ removeGeneExpLessThanX <- function(data, x) {
 #####################
 ### Load data ###
 #####################
+
+# --------------------------------------------------------------- #
+# Primary data
+# --------------------------------------------------------------- #
+counts <- Read10X("./../data/filtered_feature_bc_matrix/")
+counts <- counts[rowSums(counts) > 0, ]
+
+cellcodes <- as.data.frame(counts@Dimnames[[2]])
+colnames(cellcodes) <- "barcodes"
+rownames(cellcodes) <- cellcodes$barcodes
+cellcodes$libcodes <- as.factor(gsub(pattern=".+-", replacement="", cellcodes$barcodes))
+samples<-c("control","cap50","cap50_r4h","cap50_r8h","cap50_r16h")
+cellcodes$samples <- as.vector(samples[cellcodes$libcodes])
 
 # --------------------------------------------------------------- #
 # De Micheli et al. (2020) 
@@ -151,6 +166,18 @@ colnames(GSE126834_mb) <- paste(colnames(GSE126834_mb), "mb", sep = "_")
 ### Build SCE objects ###
 #########################
 # --------------------------------------------------------------- #
+# Primary data
+# --------------------------------------------------------------- #
+sce <- SingleCellExperiment(assays=list(counts=counts))
+colData(sce)$sample <- as.vector(cellcodes$samples)
+
+# Save sce object
+saveRDS(sce, file = "sce")
+
+# Free space
+remove(counts)
+
+# --------------------------------------------------------------- #
 # De Micheli et al. (2020): GSE143435 data set
 # --------------------------------------------------------------- #
 # merge raw data into a single object
@@ -250,13 +277,143 @@ remove(GSE126834_mb)
 # --------------------------------------------------------------- #
 
 # --------------------------------------------------------------- #
+# Primary data
+# --------------------------------------------------------------- #
+# Compute per cell quality control metrics
+sce <- addPerCellQC(sce,subsets=list(Mito=grep("mt-", rownames(sce))))
+rowData(sce)$mito <- FALSE
+rowData(sce)$mito[grep("^mt-",rownames(sce))] <- TRUE
+
+# Find outliers from total counts for each cell (sum)
+qc.lib.control <- isOutlier(sce$sum[sce$sample=="control"], log=TRUE, type="both",nmads =4)
+summary(qc.lib.control)
+
+qc.lib.cap50 <- isOutlier(sce$sum[sce$sample=="cap50"], log=TRUE, type="both",nmads =4)
+summary(qc.lib.cap50)
+
+qc.lib.cap50_r4h <- isOutlier(sce$sum[sce$sample=="cap50_r4h"], log=TRUE, type="both",nmads =4)
+summary(qc.lib.cap50_r4h)
+
+qc.lib.cap50_r8h <- isOutlier(sce$sum[sce$sample=="cap50_r8h"], log=TRUE, type="both",nmads =4)
+summary(qc.lib.cap50_r8h)
+
+qc.lib.cap50_r16h <- isOutlier(sce$sum[sce$sample=="cap50_r16h"], log=TRUE, type="both",nmads =4)
+summary(qc.lib.cap50_r16h)
+
+# Find outliers from total number of detected genes
+qc.nexprs.control <- isOutlier(sce$detected[sce$sample=="control"], log=TRUE, type="both",nmads =4)
+summary(qc.nexprs.control)
+
+qc.nexprs.cap50 <- isOutlier(sce$detected[sce$sample=="cap50"], log=TRUE, type="both",nmads =4)
+summary(qc.nexprs.cap50)
+
+qc.nexprs.cap50_r4h <- isOutlier(sce$detected[sce$sample=="cap50_r4h"], log=TRUE, type="both",nmads =4)
+summary(qc.nexprs.cap50_r4h)
+
+qc.nexprs.cap50_r8h <- isOutlier(sce$detected[sce$sample=="cap50_r8h"], log=TRUE, type="both",nmads =4)
+summary(qc.nexprs.cap50_r8h)
+
+qc.nexprs.cap50_r16h <- isOutlier(sce$detected[sce$sample=="cap50_r16h"], log=TRUE, type="both",nmads =4)
+summary(qc.nexprs.cap50_r16h)
+
+# Find outliers from percentage of reads mapped to mitochondrial transcripts
+qc.mito.control <- sce$subsets_Mito_percent[sce$sample=="control"] > 20
+summary(qc.mito.control)
+
+qc.mito.cap50 <- sce$subsets_Mito_percent[sce$sample=="cap50"] > 20
+summary(qc.mito.cap50)
+
+qc.mito.cap50_r4h <- sce$subsets_Mito_percent[sce$sample=="cap50_r4h"] > 20
+summary(qc.mito.cap50_r4h)
+
+qc.mito.cap50_r8h <- sce$subsets_Mito_percent[sce$sample=="cap50_r8h"] > 20
+summary(qc.mito.cap50_r8h)
+
+qc.mito.cap50_r16h <- sce$subsets_Mito_percent[sce$sample=="cap50_r16h"] > 20
+
+# Check if qc metrics correlate
+
+cdf <- colData(sce)[c("subsets_Mito_percent","sum","detected")]
+cors <- cor(as.matrix(cdf))
+cors
+
+# Combine discards
+
+discard.control <- qc.lib.control | qc.nexprs.control | qc.mito.control
+discard.cap50 <- qc.lib.cap50 | qc.nexprs.cap50 | qc.mito.cap50
+discard.cap50_r4h <- qc.lib.cap50_r4h | qc.nexprs.cap50_r4h | qc.mito.cap50_r4h
+discard.cap50_r8h <- qc.lib.cap50_r8h | qc.nexprs.cap50_r8h | qc.mito.cap50_r8h
+discard.cap50_r16h <- qc.lib.cap50_r16h | qc.nexprs.cap50_r16h | qc.mito.cap50_r16h
+
+
+# Summarize the number of cells removed for each reason
+discardSummary.control <- DataFrame(LibSize=sum(qc.lib.control), NExprs=sum(qc.nexprs.control),
+                                    MitoProp=sum(qc.mito.control), Total=sum(discard.control))
+
+discardSummary.cap50 <- DataFrame(LibSize=sum(qc.lib.cap50), NExprs=sum(qc.nexprs.cap50),
+                                  MitoProp=sum(qc.mito.cap50), Total=sum(discard.cap50))
+
+discardSummary.cap50_r4h <- DataFrame(LibSize=sum(qc.lib.cap50_r4h), NExprs=sum(qc.nexprs.cap50_r4h),
+                                      MitoProp=sum(qc.mito.cap50_r4h), Total=sum(discard.cap50_r4h))
+
+discardSummary.cap50_r8h <- DataFrame(LibSize=sum(qc.lib.cap50_r8h), NExprs=sum(qc.nexprs.cap50_r8h),
+                                      MitoProp=sum(qc.mito.cap50_r8h), Total=sum(discard.cap50_r8h))
+
+discardSummary.cap50_r16h <- DataFrame(LibSize=sum(qc.lib.cap50_r16h), NExprs=sum(qc.nexprs.cap50_r16h),
+                                       MitoProp=sum(qc.mito.cap50_r16h), Total=sum(discard.cap50_r16h))
+
+discardSummary.control
+discardSummary.cap50
+discardSummary.cap50_r4h
+discardSummary.cap50_r8h
+discardSummary.cap50_r16h
+
+sce$discard <- c(discard.control,discard.cap50,discard.cap50_r4h,discard.cap50_r8h,discard.cap50_r16h)
+
+# Plot QC metrics
+gridExtra::grid.arrange(
+  plotColData(sce, x="sample", y="sum",colour_by = "discard",point_size=0.3) +
+    scale_y_log10() + ggtitle("Total counts") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
+  plotColData(sce, x="sample", y="detected",colour_by = "discard",point_size=0.3) + 
+    scale_y_log10() + ggtitle("Detected genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
+  plotColData(sce, x="sample", y="subsets_Mito_percent",colour_by = "discard",point_size=0.3) + 
+    ggtitle("Percent mitochondrial reads") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
+  plotColData(sce, x="sample", y="percent_top_500",colour_by = "discard",point_size=0.3) + 
+    ggtitle("Percent top 500 genes") + guides(colour = guide_legend(override.aes = list(size=15, alpha = 1))),
+  ncol=1
+)
+
+# Filter outliers
+
+sce.f <- sce[,sce$discard==FALSE]
+
+# Check for cell type enrichment in the discarded pool
+
+lost <- calculateAverage(counts(sce)[,c(discard.control,discard.cap50,discard.cap50_r4h,discard.cap50_r8h,discard.cap50_r16h)])
+kept <- calculateAverage(counts(sce)[,!c(discard.control,discard.cap50,discard.cap50_r4h,discard.cap50_r8h,discard.cap50_r16h)])
+
+library(edgeR)
+
+logged <- cpm(cbind(lost, kept), log=TRUE, prior.count=2)
+logFC <- logged[,1] - logged[,2]
+abundance <- rowMeans(logged)
+
+# Plot gene logFC between discarded and kept cells (blue = mitochondrial genes)
+plot(abundance, logFC, xlab="Average count", ylab="Log-FC (lost/kept)", pch=16)
+points(abundance[rowData(sce)$mito==TRUE], logFC[rowData(sce)$mito==TRUE], col="dodgerblue", pch=16)
+
+changed <- logFC>0.5
+
+# Up in discarded
+rownames(sce)[changed]
+
+# Save filtered object
+saveRDS(sce.f,file="sce_f")
+
+# --------------------------------------------------------------- #
 # De Micheli et al. data set
 # --------------------------------------------------------------- #
-sce.deMicheli <- readRDS("sce_deMicheli")
-
-length(unique((colnames(sce.deMicheli))))
-length((colnames(sce.deMicheli)))
-
+# sce.deMicheli <- readRDS("sce_deMicheli")
 
 # Compute per cell quality control metrics
 sce.deMicheli <- addPerCellQC(sce.deMicheli, subsets = list(Mito=grep("mt-", rownames(sce.deMicheli))))
@@ -529,8 +686,35 @@ saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
 # --------------------------------------------------------------- #
 
 # Make new sce objects for normalization purposes
+sce.n <- sce.f
 sce.dellOrso.n <- sce.dellOrso.f
 sce.deMicheli.n <- sce.deMicheli.f
+
+# --------------------------------------------------------------- #
+# Primary data
+# --------------------------------------------------------------- #
+# Compute size factors
+lib.sf <- librarySizeFactors(sce.n)
+summary(lib.sf)
+
+set.seed(100)
+quickie <- quickCluster(sce.n,block=sce.n$sample)
+table(quickie)
+
+sce.n <- computeSumFactors(sce.n, cluster=quickie)
+
+deconv.sf <- sizeFactors(sce.n)
+
+# Plot library size factor vs. deconvolution size factor
+plot(lib.sf, deconv.sf, xlab="Library size factor",
+     ylab="Deconvolution size factor", log='xy', pch=16)
+abline(a=0, b=1, col="red")
+
+# Compute log-normalized expression values for each cell
+sce.n <- logNormCounts(sce.n)
+
+# Save normalized data
+saveRDS(sce.n, file = "sce_n")
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al.
@@ -590,7 +774,7 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 
 
 #########################################
-### TODO: Cell cycle scoring and regression ###
+### Cell cycle scoring and regression ###
 #########################################
 # --------------------------------------------------------------- #
 # Notes about cell cycle scoring and regression
@@ -618,46 +802,60 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 # - ScaleData(x, vars.to.regress = "CC.Difference" ...)
 # --------------------------------------------------------------- #
 
+# --------------------------------------------------------------- #
+# Primary data
+# --------------------------------------------------------------- #
 # Get a list of cell cycle markers (G2/M phase and S phase markers)
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
 
-# --------------------------------------------------------------- #
-# Dell'Orso et al. data set
-# --------------------------------------------------------------- #
-# Convert sce to Seurat object
-seurat.dellOrso <- as.Seurat(sce.dellOrso.n, counts = "counts", data = "logcounts")
+# Change gene names to uppercase (human genes)
+rownames(sce.n) <- toupper(rownames(sce.n))
 
+# Convert sce into Seurat object
+data <- as.Seurat(sce.n, counts = "counts", data = "logcounts")
 
-#TODO: Work in progress
-#TODO: How to convert sce object into Seurat object (?)
-# # Get a list of cell cycle markers (G2/M phase and S phase markers)
-# s.genes <- cc.genes$s.genes
-# g2m.genes <- cc.genes$g2m.genes
-# 
-# sce.dellOrso.seurat <- as.Seurat(sce.dellOrso.n, counts = "counts")
-# 
-# # Assign cell cycle scores
-# sce.dellOrso.n <- CellCycleScoring(sce.dellOrso.n, s.features = s.genes,
-#                                    g2m.features = g2m.genes, set.ident = TRUE)
-# 
-# # Visualize the cell cycle markers
-# RidgePlot(sce.dellOrso.n, features = c("PCNA", "TOP2A", "MCM6", "MKI67"), ncol = 2)
-# 
-# # Regress out cell cycle scores during data scaling
-# sce.dellOrso.n <- ScaleData(sce.dellOrso.n, vars.to.regress = c("S.Score", "G2M.Score"),
-#                             features = rownames(sce.dellOrso.n))
-# 
-# # Run PCA and verify that no clear clusters are seen
-# sce.dellOrso.n <- RunPCA(sce.dellOrso.n, features = c(s.genes, g2m.genes))
+# Perform Seurat normalization
+data <- NormalizeData(data)
 
+# Add normalized values from sce object to the Seurat object
+data@assays$RNA@data <- logcounts(sce.n)
+
+# Assign cell cycle scores
+data <- CellCycleScoring(data, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+# Calculate the difference between the G2M and S phase scores
+data$CC.Difference <- data$S.Score - data$G2M.Score
+
+# Regress out CC difference
+data <- ScaleData(data, vars.to.regress = "CC.Difference", features = rownames(data))
+
+# Save scaled object
+saveRDS(data, file = "data_cc")
+
+# Find variable features
+data <- FindVariableFeatures(data, selection.method = "vst")
+
+# cell cycle effects strongly mitigated in PCA
+data <- RunPCA(data, features = VariableFeatures(data), nfeatures.print = 10)
+DimPlot(data)
+
+# PCA on cell cycle genes
+data <- RunPCA(data, features = c(s.genes, g2m.genes))
+DimPlot(data)
 
 
 ###############################################
 ### Feature selection & dimension reduction ###
 ###############################################
 # --------------------------------------------------------------- #
-# Dell'Orso et al.
+# Primary data
+# --------------------------------------------------------------- #
+
+
+
+# --------------------------------------------------------------- #
+# Dell'Orso et al. dataset
 # --------------------------------------------------------------- #
 # Model per-gene variance (technical & biological variation)
 dec.dellOrso <- modelGeneVar(sce.dellOrso.n)
@@ -693,10 +891,9 @@ ncol(reducedDim(denoised.sce.dellOrso))
 saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
 
 # --------------------------------------------------------------- #
-# De Micheli et al.
+# De Micheli et al. dataset
 # --------------------------------------------------------------- #
 #sce.deMicheli.n <- readRDS("sce_deMicheli_n")
-
 
 # Model per-gene variance (technical & biological variation)
 dec.deMicheli <- modelGeneVar(sce.deMicheli.n)
