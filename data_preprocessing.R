@@ -961,13 +961,10 @@ sce.cc.3 <- regressBatches(sce.n, batch = assignments$labels)
 # - The simplest visualization approach is to plot the top 2 PCs with plotReducedDim() function
 
 # --------------------------------------------------------------- #
-# Primary data
+# Primary data (no cell cycle correction)
 # --------------------------------------------------------------- #
-# Convert back to single cell experiment
-sce.cc <- as.SingleCellExperiment(data)
-
 # Model per-gene variance
-dec.data <- modelGeneVar(sce.cc)
+dec.data <- modelGeneVar(sce.n)
 
 # Visualizing the fit
 fit1 <- metadata(dec.data)
@@ -979,11 +976,12 @@ curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 hvgs.data <- getTopHVGs(dec.data, prop = 0.1)
 
 # Dimension reduction
-sce.cc <- runPCA(sce.cc, subset_rows = hvgs.data)
-plotReducedDim(sce.cc, dimred = "PCA", colour_by = "sample")
+set.seed(123)
+sce.n <- runPCA(sce.n, subset_row = hvgs.data)
+plotReducedDim(sce.n, dimred = "PCA", colour_by = "sample")
 
 # Compute the variance explained by each PC
-percent.var <- attr(reducedDim(sce.cc), "percentVar")
+percent.var <- attr(reducedDim(sce.n), "percentVar")
 chosen.elbow <- PCAtools::findElbowPoint(percent.var)
 chosen.elbow
 
@@ -994,7 +992,7 @@ abline(v = chosen.elbow, col = "red")
 
 # Remove PCs corresponding to technical noise
 set.seed(123)
-denoised.sce <- denoisePCA(sce.cc, technical = dec.data, subset.row = hvgs.data)
+denoised.sce <- denoisePCA(sce.n, technical = dec.data, subset.row = hvgs.data)
 
 # Dimensions of denoised PCA
 ncol(reducedDim(denoised.sce))
@@ -1021,7 +1019,7 @@ sce.dellOrso.n <- runPCA(sce.dellOrso.n, subset_row = hvgs.dellOrso)
 plotReducedDim(sce.dellOrso.n, dimred = "PCA", colour_by = "sample")
 
 # Compute the variance explained by each PC
-percent.var.dellOrso <- attr(reducedDim(sce.dellOrso.n, "percentVar"))
+percent.var.dellOrso <- attr(reducedDim(sce.dellOrso.n), "percentVar")
 chosen.elbow.dellOrso <- PCAtools::findElbowPoint(percent.var)
 chosen.elbow.dellOrso
 
@@ -1045,8 +1043,6 @@ saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
 # --------------------------------------------------------------- #
 # De Micheli et al. dataset
 # --------------------------------------------------------------- #
-#sce.deMicheli.n <- readRDS("sce_deMicheli_n")
-
 # Model per-gene variance (technical & biological variation)
 dec.deMicheli <- modelGeneVar(sce.deMicheli.n)
 
@@ -1062,13 +1058,15 @@ hvgs.deMicheli <- getTopHVGs(dec.deMicheli, prop = 0.1)
 sce.deMicheli.n <- runPCA(sce.deMicheli.n, subset_row = hvgs.deMicheli)
 plotReducedDim(sce.deMicheli.n, dimred = "PCA", colour_by = "sample")
 
-#TODO: "percentVar" attribute not found.
-#percent.var.deMicheli <- attr(reducedDim(sce.deMicheli.n, "percentVar"))
-#chosen.elbow.deMicheli <- PCAtools::findElbowPoint(percent.var)
-#chosen.elbow.deMicheli
-#par(mfrow=c(1,1))
-#plot(percent.var.deMicheli, xlab = "PC", ylab = "Variance explained (%)")
-#abline(v=chosen.elbow.deMicheli, col = "red")
+# Compute the variance explained by each PC
+percent.var.deMicheli <- attr(reducedDim(sce.deMicheli.n), "percentVar")
+chosen.elbow.deMicheli <- PCAtools::findElbowPoint(percent.var.deMicheli)
+chosen.elbow.deMicheli
+
+# Plot variance explained by PCs
+par(mfrow=c(1,1))
+plot(percent.var.deMicheli, xlab = "PC", ylab = "Variance explained (%)")
+abline(v=chosen.elbow.deMicheli, col = "red")
 
 # Remove PCs corresponding to technical noise
 set.seed(123)
