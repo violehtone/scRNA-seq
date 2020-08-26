@@ -26,6 +26,12 @@ library(dplyr)
 library(docstring)
 library(ggplot2)
 library(edgeR)
+library(biomaRt)
+library(scRNAseq)
+library(org.Mm.eg.db)
+library(SingleR)
+library(batchelor)
+
 
 #########################
 ### Utility functions ###
@@ -93,10 +99,10 @@ GSE143435_raw_d7 <- firstColumnToRowNames(GSE143435_raw_d7)
 GSE143435_meta_d7 <- firstColumnToRowNames(GSE143435_meta_d7)
 
 # Remove cells that do not exist in metadata
-GSE143435_raw_d0 <- GSE143435_raw_d0 %>% select(rownames(GSE143435_meta_d0))
-GSE143435_raw_d2 <- GSE143435_raw_d2 %>% select(rownames(GSE143435_meta_d2))
-GSE143435_raw_d5 <- GSE143435_raw_d5 %>% select(rownames(GSE143435_meta_d5))
-GSE143435_raw_d7 <- GSE143435_raw_d7 %>% select(rownames(GSE143435_meta_d7))
+GSE143435_raw_d0 <- GSE143435_raw_d0 %>% dplyr::select(rownames(GSE143435_meta_d0))
+GSE143435_raw_d2 <- GSE143435_raw_d2 %>% dplyr::select(rownames(GSE143435_meta_d2))
+GSE143435_raw_d5 <- GSE143435_raw_d5 %>% dplyr::select(rownames(GSE143435_meta_d5))
+GSE143435_raw_d7 <- GSE143435_raw_d7 %>% dplyr::select(rownames(GSE143435_meta_d7))
 
 # Add zero counts to make the dimensions (genes) of data sets similar
 # d0
@@ -779,39 +785,53 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 # --------------------------------------------------------------- #
 # Notes about cell cycle scoring and regression
 # --------------------------------------------------------------- #
-# Solution 1: 
-# we assign each cell a score, based on its expression of G2/M and S phase markers. 
-# Cells expressing neither are likely in G1 phase
+# We assign each cell a score, based on its expression of G2/M and S phase markers. Cells expressing neither are likely in G1 phase
+# Then, we subtract ('regress out') this source of heterogeneity from the data.
 
 # In practice:
-#  - We assign scores in the CellCycleScoring function, which stores in object metadata:
-#     * S and G2/M scores
-#     * predicted classification of each cell in either G2M, S or G1 phase.
-# - subtract ('regress out') this source of heterogeneity from the data.
-#    * scaleData(): For each gene, Seurat models the relationship between gene expression and the S and G2M cell cycle scores.
-#    * ScaleData(x, vars.to.regress = c("S.Score", "G2M.Score") ...)
-
-# Solution 2: 
-# When analyzing differentiation processes, an alternative workflow should be used
-# - Here, regressing out all cell cycle effects can blur the distinction between stem and progenitor cells as well.
-# - As an alternative, we suggest regressing out the difference between the G2M and S phase scores.
-# - This means that signals separating non-cycling cells and cycling cells will be maintained, but differences in cell cycle
-#   phase amongst proliferating cells (which are often uninteresting), will be regressed out of the data
-
-# In practice:
-# - ScaleData(x, vars.to.regress = "CC.Difference" ...)
+#  - Assign scores in the CellCycleScoring() function, which stores in object metadata
+#  - Regress out the difference between the G2M and S phase scores (CC difference)
+#  - ScaleData(x, vars.to.regress = "CC.Difference" ...)
 # --------------------------------------------------------------- #
 
-# --------------------------------------------------------------- #
-# Primary data
-# --------------------------------------------------------------- #
+# Make mapping between human and mouse genes
+ensembl.human <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+ensembl.mouse <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+
+mouse_to_human_genes <- getLDS(attributes = c('external_gene_name'),
+                               filters = 'external_gene_name',
+                               values = rownames(sce.n),
+                               mart = ensembl.mouse,
+                               attributesL = c('external_gene_name'),
+                               martL = ensembl.human)
+
+names(mouse_to_human_genes) <- c("mouse", "human")
+
 # Get a list of cell cycle markers (G2/M phase and S phase markers)
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
 
-# Change gene names to uppercase (human genes)
-rownames(sce.n) <- toupper(rownames(sce.n))
+# Convert cell cycle markers from human genes to mouse genes
+g2m.genes.mouse <- c()
+s.genes.mouse <- c()
 
+for(g in s.genes) {
+  gene <- mouse_to_human_genes[mouse_to_human_genes$human == g, ]$mouse
+  if(length(gene) > 0) {
+    s.genes.mouse <- append(s.genes.mouse, gene)
+  }
+}
+
+for(g in g2m.genes) {
+  gene <- mouse_to_human_genes[mouse_to_human_genes$human == g, ]$mouse
+  if(length(gene) > 0) {
+    g2m.genes.mouse <- append(g2m.genes.mouse, gene)
+  }
+}
+
+# --------------------------------------------------------------- #
+# Primary data - method 1: Seurat
+# --------------------------------------------------------------- #
 # Convert sce into Seurat object
 data <- as.Seurat(sce.n, counts = "counts", data = "logcounts")
 
@@ -822,19 +842,19 @@ data <- NormalizeData(data)
 data@assays$RNA@data <- logcounts(sce.n)
 
 # Assign cell cycle scores
-data <- CellCycleScoring(data, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+data <- CellCycleScoring(data, s.features = s.genes.mouse, g2m.features = g2m.genes.mouse, set.ident = TRUE)
 
 # Calculate the difference between the G2M and S phase scores
 data$CC.Difference <- data$S.Score - data$G2M.Score
+
+# Find variable features
+data <- FindVariableFeatures(data, selection.method = "vst")
 
 # Regress out CC difference
 data <- ScaleData(data, vars.to.regress = "CC.Difference", features = rownames(data))
 
 # Save scaled object
 saveRDS(data, file = "data_cc")
-
-# Find variable features
-data <- FindVariableFeatures(data, selection.method = "vst")
 
 # cell cycle effects strongly mitigated in PCA
 data <- RunPCA(data, features = VariableFeatures(data), nfeatures.print = 10)
@@ -844,15 +864,143 @@ DimPlot(data)
 data <- RunPCA(data, features = c(s.genes, g2m.genes))
 DimPlot(data)
 
+# --------------------------------------------------------------- #
+# Primary data - method 2: Using the cyclins
+# --------------------------------------------------------------- #
+cyclin.genes <- grep("^Ccn[abde][0-9]$", rownames(sce.n))
+cyclin.genes <- rownames(sce.n)[cyclin.genes]
+cyclin.genes
+
+quickie <- quickCluster(sce.n, block = sce.n$sample)
+
+plotHeatmap(sce.n, order_columns_by = "sample",
+            cluster_rows = FALSE,
+            features = sort(cyclin.genes))
+
+markers <- findMarkers(sce.n, subset.row = cyclin.genes, 
+                       groups = sce.n$sample,
+                       test.type = "wilcox", direction = "up")
+
+# --------------------------------------------------------------- #
+# Primary data - method 3: Using reference profiles
+# --------------------------------------------------------------- #
+# Get reference data containing mouse ESCs with known cell cycle phases
+sce.ref <- BuettnerESCData()
+
+# Find genes that are present in both datasets and are cell cycle-related.
+
+# Retrieve cycle genes from biomaRt
+cycle.anno <- biomaRt::select(org.Mm.eg.db, keytype="GOALL", keys="GO:0007049", 
+                     columns="SYMBOL")[,"SYMBOL"]
+
+
+
+# Transform reference data ensembl genes to symbols
+ensembl.mouse <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+
+gene_list <- getBM(filters= "ensembl_gene_id",
+                   attributes= c("ensembl_gene_id","external_gene_name"),
+                   values= rownames(sce.ref),
+                   mart= ensembl.mouse)
+
+for(i in 1:length(rownames(sce.ref))) {
+  gene <- rownames(sce.ref)[i]
+  gene_name <- gene_list[gene_list$ensembl_gene_id == gene, ]$external_gene_name
+  print(i)
+  print(gene_name)
+  if(length(gene_name) > 0) {
+    rownames(sce.ref)[i] <- gene_name
+  }
+}
+
+# Find genes that are present in both data sets and are cell cycle related
+candidates <- Reduce(intersect, 
+                     list(rownames(sce.ref), rownames(sce.n), cycle.anno))
+
+# Identify markers between cell cycle phases
+sce.ref <- logNormCounts(sce.ref)
+phase.stats <- pairwiseWilcox(logcounts(sce.ref),
+                              sce.ref$phase,
+                              direction = "up",
+                              subset.row = candidates)
+
+cycle.markers <- getTopMarkers(phase.stats[[1]],
+                               phase.stats[[2]])
+
+
+# Use markers to assign labels to the primary data set
+assignments <- SingleR(test = sce.n,
+                       ref = sce.ref,
+                       labels = sce.ref$phase,
+                       genes = cycle.markers)
+
+tab <- table(assignments$labels,
+             sce.n$sample)
+
+# Regress out cell cycle effect
+sce.cc.3 <- regressBatches(sce.n, batch = assignments$labels)
+
 
 ###############################################
 ### Feature selection & dimension reduction ###
 ###############################################
 # --------------------------------------------------------------- #
+# Notes about feature selection & dimension reduction
+# --------------------------------------------------------------- #
+# Feature selection
+# - The simplest approach to quantifying per-gene variation is to simply compute the variance of the log-normalized expression values (log counts)
+# - We use the modelGeneVar() function to fit a trend to the variance with respect to abundance across all genes
+# - Once we have quantified the per-gene variation, the next step is to select the subset of HVGs to use in downstream analyses.
+# - The simplest HVG selection strategy is to take the top X genes with the largest values for the relevant variance metric.
+# - getTopHVGs(... prop = 0.1) selects the top 10% of the HVGs
+
+# Dimension reduction
+# - Dimension reduction reduces computational work in downstream analyses (like clustering)
+# - PCA is performed on the log-normalized expression values by using runPCA() function
+# - A simple method for choosing the #PCs is to use the elbow point in the % of var. explained by successive PCs
+# - The simplest visualization approach is to plot the top 2 PCs with plotReducedDim() function
+
+# --------------------------------------------------------------- #
 # Primary data
 # --------------------------------------------------------------- #
+# Convert back to single cell experiment
+sce.cc <- as.SingleCellExperiment(data)
 
+# Model per-gene variance
+dec.data <- modelGeneVar(sce.cc)
 
+# Visualizing the fit
+fit1 <- metadata(dec.data)
+plot(fit1$mean, fit1$var, xlab = "Mean of log-expression",
+     ylab = "Variance of log-expression")
+curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
+
+# Define highly variable genes (HVGs)
+hvgs.data <- getTopHVGs(dec.data, prop = 0.1)
+
+# Dimension reduction
+sce.cc <- runPCA(sce.cc, subset_rows = hvgs.data)
+plotReducedDim(sce.cc, dimred = "PCA", colour_by = "sample")
+
+# Compute the variance explained by each PC
+percent.var <- attr(reducedDim(sce.cc), "percentVar")
+chosen.elbow <- PCAtools::findElbowPoint(percent.var)
+chosen.elbow
+
+# Plot variance explained by PCs
+par(mfrow=c(1,1))
+plot(percent.var, xlab = "PC", ylab = "Variance explained (%)")
+abline(v = chosen.elbow, col = "red")
+
+# Remove PCs corresponding to technical noise
+set.seed(123)
+denoised.sce <- denoisePCA(sce.cc, technical = dec.data, subset.row = hvgs.data)
+
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce))
+
+# Save the sce object
+saveRDS(denoised.sce, file = "denoised.sce")
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. dataset
@@ -865,18 +1013,22 @@ fit1 <- metadata(dec.dellOrso)
 plot(fit1$mean, fit1$var, xlab = "Mean of log-expression", ylab = "Variance of log-expression")
 curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 
-# Define the highly variable genes (HVGs) and perform dimension reduction
+# Define the highly variable genes (HVGs)
 hvgs.dellOrso <- getTopHVGs(dec.dellOrso, prop = 0.1)
+
+# Perform dimension reduction
 sce.dellOrso.n <- runPCA(sce.dellOrso.n, subset_row = hvgs.dellOrso)
 plotReducedDim(sce.dellOrso.n, dimred = "PCA", colour_by = "sample")
 
-#TODO: "percentVar" attribute not found.
-#percent.var.dellOrso <- attr(reducedDim(sce.dellOrso.n, "percentVar"))
-#chosen.elbow.dellOrso <- PCAtools::findElbowPoint(percent.var)
-#chosen.elbow.dellOrso
-#par(mfrow=c(1,1))
-#plot(percent.var.dellOrso, xlab = "PC", ylab = "Variance explained (%)")
-#abline(v=chosen.elbow.dellOrso, col = "red")
+# Compute the variance explained by each PC
+percent.var.dellOrso <- attr(reducedDim(sce.dellOrso.n, "percentVar"))
+chosen.elbow.dellOrso <- PCAtools::findElbowPoint(percent.var)
+chosen.elbow.dellOrso
+
+# Plot variance explained by PCs
+par(mfrow=c(1,1))
+plot(percent.var.dellOrso, xlab = "PC", ylab = "Variance explained (%)")
+abline(v=chosen.elbow.dellOrso, col = "red")
 
 # Remove PCs corresponding to technical noise
 set.seed(123)
@@ -903,8 +1055,10 @@ fit1 <- metadata(dec.deMicheli)
 plot(fit1$mean, fit1$var, xlab = "Mean of log-expression", ylab = "Variance of log-expression")
 curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 
-# Define the highly variable genes (HVGs) and perform dimension reduction
+# Define the highly variable genes (HVGs)
 hvgs.deMicheli <- getTopHVGs(dec.deMicheli, prop = 0.1)
+
+# Perform dimension reduction
 sce.deMicheli.n <- runPCA(sce.deMicheli.n, subset_row = hvgs.deMicheli)
 plotReducedDim(sce.deMicheli.n, dimred = "PCA", colour_by = "sample")
 
@@ -932,6 +1086,36 @@ saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
 ##################
 ### Clustering ###
 ##################
+# --------------------------------------------------------------- #
+# Notes about clustering
+# --------------------------------------------------------------- #
+# - After annotation based on marker genes, the clusters can be treated as proxies for more abstract biological concepts such as cell types or states.
+# - graph-based clustering is a flexible and scalable technique for clustering large scRNA-seq datasets
+# - The major advantage of graph-based clustering lies in its scalability. It only requires a k-nearest neighbor search that can be done in log-linear time on average
+# - SNNG = Shared Nearest Neighbor Graph
+
+# In practice:
+# - buildSNNGraph() builds a k-nearest neighbors graph of cells based on expression profiles
+#    * k = number of nearest neighbors to use for search
+#    * use.dimred = use existing values in reducedDims(x)
+
+# Pipelines involving scran default to rank-based weights followed by Walktrap clustering. 
+# In contrast, Seurat uses Jaccard-based weights followed by Louvain clustering
+# - igraph::cluster_louvain() finds communities (subgraphs) within the input graph
+# - The graph can be visualized using a force-directed layout for the SNNG graph. This yields a dimensionality reduction result
+# - Fruchterman-Reingold layout algorithm (layout_with_fr()) places vertices on the plane using force-directed layout algorithm
+
+# --------------------------------------------------------------- #
+# Primary data
+# --------------------------------------------------------------- #
+dimensions <- ncol(reducedDim(denoised.sce))
+snng <- buildSNNGraph(sce.cc, d = dimensions)
+clust <- igraph::cluster_louvain(snng)$membership
+sce.cc$cluster <- factor(clust)
+set.seed(123)
+reducedDim(sce.cc, "force") <- igraph::layout_with_fr(snng)
+table(clust)
+
 # --------------------------------------------------------------- #
 # Dell'Orso et al.
 # --------------------------------------------------------------- #
