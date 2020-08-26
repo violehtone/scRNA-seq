@@ -998,7 +998,8 @@ denoised.sce <- denoisePCA(sce.n, technical = dec.data, subset.row = hvgs.data)
 ncol(reducedDim(denoised.sce))
 
 # Save the sce object
-saveRDS(denoised.sce, file = "denoised.sce")
+saveRDS(denoised.sce, file = "denoised_sce")
+saveRDS(sce.n, file = "sce_n2")
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. dataset
@@ -1039,6 +1040,7 @@ ncol(reducedDim(denoised.sce.dellOrso))
 
 # Save sce object
 saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
+saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n2")
 
 # --------------------------------------------------------------- #
 # De Micheli et al. dataset
@@ -1079,6 +1081,7 @@ ncol(reducedDim(denoised.sce.deMicheli))
 
 # Save sce object
 saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
+saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n2")
 
 
 ##################
@@ -1104,21 +1107,29 @@ saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
 # - Fruchterman-Reingold layout algorithm (layout_with_fr()) places vertices on the plane using force-directed layout algorithm
 
 # --------------------------------------------------------------- #
-# Primary data
+# Primary data (no cell cycle correction)
 # --------------------------------------------------------------- #
 dimensions <- ncol(reducedDim(denoised.sce))
-snng <- buildSNNGraph(sce.cc, d = dimensions)
+snng <- buildSNNGraph(sce.n, d = dimensions)
 clust <- igraph::cluster_louvain(snng)$membership
-sce.cc$cluster <- factor(clust)
+sce.n$cluster <- factor(clust)
+
 set.seed(123)
-reducedDim(sce.cc, "force") <- igraph::layout_with_fr(snng)
+reducedDim(sce.n, "force") <- igraph::layout_with_fr(snng)
 table(clust)
+
+# Plot results
+plotReducedDim(sce.n, colour_by = "sample", dimred = "force")
+plotReducedDim(sce.n, colour_by = "sample", dimred = "PCA")
+sce.n <- runUMAP(sce.n, dimred = "PCA", n_dimred = dimensions)
+plotReducedDim(sce.n, colour_by = "sample", dimred = "UMAP")
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al.
 # --------------------------------------------------------------- #
 # Perform clustering
-snng.dellOrso <- buildSNNGraph(sce.dellOrso.n, d = 5)
+dimensions.dellOrso <- ncol(reducedDim(denoised.sce.dellOrso))
+snng.dellOrso <- buildSNNGraph(sce.dellOrso.n, d = dimensions.dellOrso)
 clust.dellOrso <- igraph::cluster_louvain(snng.dellOrso)$membership
 sce.dellOrso.n$cluster <- factor(clust.dellOrso)
 
