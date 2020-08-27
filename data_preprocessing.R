@@ -778,169 +778,6 @@ sce.deMicheli.n <- logNormCounts(sce.deMicheli.n)
 # Save normalized data
 saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 
-
-#########################################
-### Cell cycle scoring and regression ###
-#########################################
-# --------------------------------------------------------------- #
-# Notes about cell cycle scoring and regression
-# --------------------------------------------------------------- #
-# We assign each cell a score, based on its expression of G2/M and S phase markers. Cells expressing neither are likely in G1 phase
-# Then, we subtract ('regress out') this source of heterogeneity from the data.
-
-# In practice:
-#  - Assign scores in the CellCycleScoring() function, which stores in object metadata
-#  - Regress out the difference between the G2M and S phase scores (CC difference)
-#  - ScaleData(x, vars.to.regress = "CC.Difference" ...)
-# --------------------------------------------------------------- #
-
-# Make mapping between human and mouse genes
-ensembl.human <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-ensembl.mouse <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
-
-mouse_to_human_genes <- getLDS(attributes = c('external_gene_name'),
-                               filters = 'external_gene_name',
-                               values = rownames(sce.n),
-                               mart = ensembl.mouse,
-                               attributesL = c('external_gene_name'),
-                               martL = ensembl.human)
-
-names(mouse_to_human_genes) <- c("mouse", "human")
-
-# Get a list of cell cycle markers (G2/M phase and S phase markers)
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-
-# Convert cell cycle markers from human genes to mouse genes
-g2m.genes.mouse <- c()
-s.genes.mouse <- c()
-
-for(g in s.genes) {
-  gene <- mouse_to_human_genes[mouse_to_human_genes$human == g, ]$mouse
-  if(length(gene) > 0) {
-    s.genes.mouse <- append(s.genes.mouse, gene)
-  }
-}
-
-for(g in g2m.genes) {
-  gene <- mouse_to_human_genes[mouse_to_human_genes$human == g, ]$mouse
-  if(length(gene) > 0) {
-    g2m.genes.mouse <- append(g2m.genes.mouse, gene)
-  }
-}
-
-# --------------------------------------------------------------- #
-# Primary data - method 1: Seurat
-# --------------------------------------------------------------- #
-# Convert sce into Seurat object
-data <- as.Seurat(sce.n, counts = "counts", data = "logcounts")
-
-# Perform Seurat normalization
-data <- NormalizeData(data)
-
-# Add normalized values from sce object to the Seurat object
-data@assays$RNA@data <- logcounts(sce.n)
-
-# Assign cell cycle scores
-data <- CellCycleScoring(data, s.features = s.genes.mouse, g2m.features = g2m.genes.mouse, set.ident = TRUE)
-
-# Calculate the difference between the G2M and S phase scores
-data$CC.Difference <- data$S.Score - data$G2M.Score
-
-# Find variable features
-data <- FindVariableFeatures(data, selection.method = "vst")
-
-# Regress out CC difference
-data <- ScaleData(data, vars.to.regress = "CC.Difference", features = rownames(data))
-
-# Save scaled object
-saveRDS(data, file = "data_cc")
-
-# cell cycle effects strongly mitigated in PCA
-data <- RunPCA(data, features = VariableFeatures(data), nfeatures.print = 10)
-DimPlot(data)
-
-# PCA on cell cycle genes
-data <- RunPCA(data, features = c(s.genes, g2m.genes))
-DimPlot(data)
-
-# --------------------------------------------------------------- #
-# Primary data - method 2: Using the cyclins
-# --------------------------------------------------------------- #
-cyclin.genes <- grep("^Ccn[abde][0-9]$", rownames(sce.n))
-cyclin.genes <- rownames(sce.n)[cyclin.genes]
-cyclin.genes
-
-quickie <- quickCluster(sce.n, block = sce.n$sample)
-
-plotHeatmap(sce.n, order_columns_by = "sample",
-            cluster_rows = FALSE,
-            features = sort(cyclin.genes))
-
-markers <- findMarkers(sce.n, subset.row = cyclin.genes, 
-                       groups = sce.n$sample,
-                       test.type = "wilcox", direction = "up")
-
-# --------------------------------------------------------------- #
-# Primary data - method 3: Using reference profiles
-# --------------------------------------------------------------- #
-# Get reference data containing mouse ESCs with known cell cycle phases
-sce.ref <- BuettnerESCData()
-
-# Find genes that are present in both datasets and are cell cycle-related.
-
-# Retrieve cycle genes from biomaRt
-cycle.anno <- biomaRt::select(org.Mm.eg.db, keytype="GOALL", keys="GO:0007049", 
-                     columns="SYMBOL")[,"SYMBOL"]
-
-
-
-# Transform reference data ensembl genes to symbols
-ensembl.mouse <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
-
-gene_list <- getBM(filters= "ensembl_gene_id",
-                   attributes= c("ensembl_gene_id","external_gene_name"),
-                   values= rownames(sce.ref),
-                   mart= ensembl.mouse)
-
-for(i in 1:length(rownames(sce.ref))) {
-  gene <- rownames(sce.ref)[i]
-  gene_name <- gene_list[gene_list$ensembl_gene_id == gene, ]$external_gene_name
-  print(i)
-  print(gene_name)
-  if(length(gene_name) > 0) {
-    rownames(sce.ref)[i] <- gene_name
-  }
-}
-
-# Find genes that are present in both data sets and are cell cycle related
-candidates <- Reduce(intersect, 
-                     list(rownames(sce.ref), rownames(sce.n), cycle.anno))
-
-# Identify markers between cell cycle phases
-sce.ref <- logNormCounts(sce.ref)
-phase.stats <- pairwiseWilcox(logcounts(sce.ref),
-                              sce.ref$phase,
-                              direction = "up",
-                              subset.row = candidates)
-
-cycle.markers <- getTopMarkers(phase.stats[[1]],
-                               phase.stats[[2]])
-
-
-# Use markers to assign labels to the primary data set
-assignments <- SingleR(test = sce.n,
-                       ref = sce.ref,
-                       labels = sce.ref$phase,
-                       genes = cycle.markers)
-
-tab <- table(assignments$labels,
-             sce.n$sample)
-
-# Regress out cell cycle effect
-sce.cc.3 <- regressBatches(sce.n, batch = assignments$labels)
-
-
 ###############################################
 ### Feature selection & dimension reduction ###
 ###############################################
@@ -961,7 +798,7 @@ sce.cc.3 <- regressBatches(sce.n, batch = assignments$labels)
 # - The simplest visualization approach is to plot the top 2 PCs with plotReducedDim() function
 
 # --------------------------------------------------------------- #
-# Primary data (no cell cycle correction)
+# Primary data
 # --------------------------------------------------------------- #
 # Model per-gene variance
 dec.data <- modelGeneVar(sce.n)
@@ -1073,8 +910,8 @@ abline(v=chosen.elbow.deMicheli, col = "red")
 # Remove PCs corresponding to technical noise
 set.seed(123)
 denoised.sce.deMicheli <- denoisePCA(sce.deMicheli.n,
-                                    technical = dec.deMicheli,
-                                    subset.row = hvgs.deMicheli)
+                                     technical = dec.deMicheli,
+                                     subset.row = hvgs.deMicheli)
 
 # Dimensions of denoised PCA
 ncol(reducedDim(denoised.sce.deMicheli))
@@ -1083,6 +920,193 @@ ncol(reducedDim(denoised.sce.deMicheli))
 saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
 saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n2")
 
+#########################################
+### Cell cycle scoring and regression ###
+#########################################
+# --------------------------------------------------------------- #
+# Notes about cell cycle scoring and regression
+# --------------------------------------------------------------- #
+# We assign each cell a score, based on its expression of G2/M and S phase markers. Cells expressing neither are likely in G1 phase
+# Then, we subtract ('regress out') this source of heterogeneity from the data.
+
+# In practice:
+#  - Assign scores in the CellCycleScoring() function, which stores in object metadata
+#  - Regress out the difference between the G2M and S phase scores (CC difference)
+#  - ScaleData(x, vars.to.regress = "CC.Difference" ...)
+# --------------------------------------------------------------- #
+
+# Make mapping between human and mouse genes
+ensembl.human <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+ensembl.mouse <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+
+mouse_to_human_genes <- getLDS(attributes = c('external_gene_name'),
+                               filters = 'external_gene_name',
+                               values = rownames(sce.n),
+                               mart = ensembl.mouse,
+                               attributesL = c('external_gene_name'),
+                               martL = ensembl.human)
+
+names(mouse_to_human_genes) <- c("mouse", "human")
+
+# Get a list of cell cycle markers (G2/M phase and S phase markers)
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+# Convert cell cycle markers from human genes to mouse genes
+g2m.genes.mouse <- c()
+s.genes.mouse <- c()
+
+for(g in s.genes) {
+  gene <- mouse_to_human_genes[mouse_to_human_genes$human == g, ]$mouse
+  if(length(gene) > 0) {
+    s.genes.mouse <- append(s.genes.mouse, gene)
+  }
+}
+
+for(g in g2m.genes) {
+  gene <- mouse_to_human_genes[mouse_to_human_genes$human == g, ]$mouse
+  if(length(gene) > 0) {
+    g2m.genes.mouse <- append(g2m.genes.mouse, gene)
+  }
+}
+
+# --------------------------------------------------------------- #
+# Primary data - method 1: Seurat
+# --------------------------------------------------------------- #
+# Convert sce into Seurat object
+data <- as.Seurat(sce.n, counts = "counts", data = "logcounts")
+
+# Perform Seurat normalization
+data <- NormalizeData(data)
+
+# Add normalized values from sce object to the Seurat object
+data@assays$RNA@data <- logcounts(sce.n)
+
+# Assign cell cycle scores
+data <- CellCycleScoring(data, s.features = s.genes.mouse, g2m.features = g2m.genes.mouse, set.ident = TRUE)
+
+# Calculate the difference between the G2M and S phase scores
+data$CC.Difference <- data$S.Score - data$G2M.Score
+
+# Find variable features
+data <- FindVariableFeatures(data, selection.method = "vst")
+
+# Set HVGs from the sce object into the Seurat object's variable features
+data@assays$RNA@var.features <- hvgs.data
+
+# Regress out CC difference using the HVGs as features
+data <- ScaleData(data, vars.to.regress = "CC.Difference", features = VariableFeatures(data))
+
+# Save scaled object
+saveRDS(data, file = "data_cc")
+
+# cell cycle effects strongly mitigated in PCA
+data <- RunPCA(data, features = VariableFeatures(data), nfeatures.print = 10)
+DimPlot(data)
+
+# PCA on cell cycle genes
+data <- RunPCA(data, features = c(s.genes, g2m.genes))
+DimPlot(data)
+
+# Transform back to sce object
+sce.cc <- as.SingleCellExperiment(data)
+
+# Plot cell cycle phases for each sample as pie charts
+cc_vs_labels <- as.data.frame.matrix(table(sce.cc$Phase, sce.cc$sample))
+
+par(mfrow=c(2,3))
+pie(cc_vs_labels$control, labels = rownames(cc_vs_labels), main = "Control")
+pie(cc_vs_labels$cap50, labels = rownames(cc_vs_labels), main = "Cap50")
+pie(cc_vs_labels$cap50_r4h, labels = rownames(cc_vs_labels), main = "Cap50_r4h")
+pie(cc_vs_labels$cap50_r8h, labels = rownames(cc_vs_labels), main = "Cap50_r8h")
+pie(cc_vs_labels$cap50_r16h, labels = rownames(cc_vs_labels), main = "Cap50_r16h")
+
+# --------------------------------------------------------------- #
+# Primary data - method 2: Using the cyclins
+# --------------------------------------------------------------- #
+cyclin.genes <- grep("^Ccn[abde][0-9]$", rownames(sce.n))
+cyclin.genes <- rownames(sce.n)[cyclin.genes]
+cyclin.genes
+
+quickie <- quickCluster(sce.n, block = sce.n$sample)
+
+plotHeatmap(sce.n, order_columns_by = "sample",
+            cluster_rows = FALSE,
+            features = sort(cyclin.genes))
+
+markers <- findMarkers(sce.n, subset.row = cyclin.genes, 
+                       groups = sce.n$sample,
+                       test.type = "wilcox", direction = "up")
+
+# --------------------------------------------------------------- #
+# Primary data - method 3: Using reference profiles
+# --------------------------------------------------------------- #
+# Get reference data containing mouse ESCs with known cell cycle phases
+sce.ref <- BuettnerESCData()
+
+# Find genes that are present in both datasets and are cell cycle-related.
+
+# Retrieve cycle genes from biomaRt
+cycle.anno <- biomaRt::select(org.Mm.eg.db, keytype="GOALL", keys="GO:0007049", 
+                     columns="SYMBOL")[,"SYMBOL"]
+
+# Transform reference data ensembl genes to symbols
+ensembl.mouse <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+
+gene_list <- getBM(filters= "ensembl_gene_id",
+                   attributes= c("ensembl_gene_id","external_gene_name"),
+                   values= rownames(sce.ref),
+                   mart= ensembl.mouse)
+
+for(i in 1:length(rownames(sce.ref))) {
+  gene <- rownames(sce.ref)[i]
+  gene_name <- gene_list[gene_list$ensembl_gene_id == gene, ]$external_gene_name
+  print(i)
+  print(gene_name)
+  if(length(gene_name) > 0) {
+    rownames(sce.ref)[i] <- gene_name
+  }
+}
+
+# To avoid long computational time due to for loop above, read the object from file
+#sce.ref <- readRDS("cc_sce_ref_transformed")
+
+# Find genes that are present in both data sets and are cell cycle related
+candidates <- Reduce(intersect, 
+                     list(rownames(sce.ref), rownames(sce.n), cycle.anno))
+
+# Identify markers between cell cycle phases
+sce.ref <- logNormCounts(sce.ref)
+phase.stats <- pairwiseWilcox(logcounts(sce.ref),
+                              sce.ref$phase,
+                              direction = "up",
+                              subset.row = candidates)
+
+cycle.markers <- getTopMarkers(phase.stats[[1]],
+                               phase.stats[[2]])
+
+
+# Use markers to assign labels to the primary data set
+assignments <- SingleR(test = sce.n,
+                       ref = sce.ref,
+                       labels = sce.ref$phase,
+                       genes = cycle.markers)
+
+tab <- table(assignments$labels,
+             sce.n$sample)
+
+# Plot results
+tab.df <- as.data.frame.matrix(tab)
+par(mfrow=c(2,3))
+pie(tab.df$control, labels = rownames(tab.df), main = "Control")
+pie(tab.df$cap50, labels = rownames(tab.df), main = "Cap50")
+pie(tab.df$cap50_r4h, labels = rownames(tab.df), main = "Cap50_r4h")
+pie(tab.df$cap50_r8h, labels = rownames(tab.df), main = "Cap50_r8h")
+pie(tab.df$cap50_r16h, labels = rownames(tab.df), main = "Cap50_r16h")
+
+
+# Regress out cell cycle effect
+sce.cc.3 <- regressBatches(sce.n, batch = assignments$labels)
 
 ##################
 ### Clustering ###
