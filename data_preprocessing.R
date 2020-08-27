@@ -778,11 +778,12 @@ sce.deMicheli.n <- logNormCounts(sce.deMicheli.n)
 # Save normalized data
 saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 
-###############################################
-### Feature selection & dimension reduction ###
-###############################################
+
+##############################################
+### Variance modelling & Feature selection ###
+##############################################
 # --------------------------------------------------------------- #
-# Notes about feature selection & dimension reduction
+# Notes about variance modelling & feature selection
 # --------------------------------------------------------------- #
 # Feature selection
 # - The simplest approach to quantifying per-gene variation is to simply compute the variance of the log-normalized expression values (log counts)
@@ -790,12 +791,6 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n")
 # - Once we have quantified the per-gene variation, the next step is to select the subset of HVGs to use in downstream analyses.
 # - The simplest HVG selection strategy is to take the top X genes with the largest values for the relevant variance metric.
 # - getTopHVGs(... prop = 0.1) selects the top 10% of the HVGs
-
-# Dimension reduction
-# - Dimension reduction reduces computational work in downstream analyses (like clustering)
-# - PCA is performed on the log-normalized expression values by using runPCA() function
-# - A simple method for choosing the #PCs is to use the elbow point in the % of var. explained by successive PCs
-# - The simplest visualization approach is to plot the top 2 PCs with plotReducedDim() function
 
 # --------------------------------------------------------------- #
 # Primary data
@@ -812,32 +807,6 @@ curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 # Define highly variable genes (HVGs)
 hvgs.data <- getTopHVGs(dec.data, prop = 0.1)
 
-# Dimension reduction
-set.seed(123)
-sce.n <- runPCA(sce.n, subset_row = hvgs.data)
-plotReducedDim(sce.n, dimred = "PCA", colour_by = "sample")
-
-# Compute the variance explained by each PC
-percent.var <- attr(reducedDim(sce.n), "percentVar")
-chosen.elbow <- PCAtools::findElbowPoint(percent.var)
-chosen.elbow
-
-# Plot variance explained by PCs
-par(mfrow=c(1,1))
-plot(percent.var, xlab = "PC", ylab = "Variance explained (%)")
-abline(v = chosen.elbow, col = "red")
-
-# Remove PCs corresponding to technical noise
-set.seed(123)
-denoised.sce <- denoisePCA(sce.n, technical = dec.data, subset.row = hvgs.data)
-
-# Dimensions of denoised PCA
-ncol(reducedDim(denoised.sce))
-
-# Save the sce object
-saveRDS(denoised.sce, file = "denoised_sce")
-saveRDS(sce.n, file = "sce_n2")
-
 # --------------------------------------------------------------- #
 # Dell'Orso et al. dataset
 # --------------------------------------------------------------- #
@@ -851,33 +820,6 @@ curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 
 # Define the highly variable genes (HVGs)
 hvgs.dellOrso <- getTopHVGs(dec.dellOrso, prop = 0.1)
-
-# Perform dimension reduction
-sce.dellOrso.n <- runPCA(sce.dellOrso.n, subset_row = hvgs.dellOrso)
-plotReducedDim(sce.dellOrso.n, dimred = "PCA", colour_by = "sample")
-
-# Compute the variance explained by each PC
-percent.var.dellOrso <- attr(reducedDim(sce.dellOrso.n), "percentVar")
-chosen.elbow.dellOrso <- PCAtools::findElbowPoint(percent.var)
-chosen.elbow.dellOrso
-
-# Plot variance explained by PCs
-par(mfrow=c(1,1))
-plot(percent.var.dellOrso, xlab = "PC", ylab = "Variance explained (%)")
-abline(v=chosen.elbow.dellOrso, col = "red")
-
-# Remove PCs corresponding to technical noise
-set.seed(123)
-denoised.sce.dellOrso <- denoisePCA(sce.dellOrso.n,
-                                    technical = dec.dellOrso,
-                                    subset.row = hvgs.dellOrso)
-
-# Dimensions of denoised PCA
-ncol(reducedDim(denoised.sce.dellOrso))
-
-# Save sce object
-saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
-saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n2")
 
 # --------------------------------------------------------------- #
 # De Micheli et al. dataset
@@ -893,32 +835,6 @@ curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 # Define the highly variable genes (HVGs)
 hvgs.deMicheli <- getTopHVGs(dec.deMicheli, prop = 0.1)
 
-# Perform dimension reduction
-sce.deMicheli.n <- runPCA(sce.deMicheli.n, subset_row = hvgs.deMicheli)
-plotReducedDim(sce.deMicheli.n, dimred = "PCA", colour_by = "sample")
-
-# Compute the variance explained by each PC
-percent.var.deMicheli <- attr(reducedDim(sce.deMicheli.n), "percentVar")
-chosen.elbow.deMicheli <- PCAtools::findElbowPoint(percent.var.deMicheli)
-chosen.elbow.deMicheli
-
-# Plot variance explained by PCs
-par(mfrow=c(1,1))
-plot(percent.var.deMicheli, xlab = "PC", ylab = "Variance explained (%)")
-abline(v=chosen.elbow.deMicheli, col = "red")
-
-# Remove PCs corresponding to technical noise
-set.seed(123)
-denoised.sce.deMicheli <- denoisePCA(sce.deMicheli.n,
-                                     technical = dec.deMicheli,
-                                     subset.row = hvgs.deMicheli)
-
-# Dimensions of denoised PCA
-ncol(reducedDim(denoised.sce.deMicheli))
-
-# Save sce object
-saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
-saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n2")
 
 #########################################
 ### Cell cycle scoring and regression ###
@@ -997,9 +913,6 @@ data@assays$RNA@var.features <- hvgs.data
 # Regress out CC difference using the HVGs as features
 data <- ScaleData(data, vars.to.regress = "CC.Difference", features = VariableFeatures(data))
 
-# Save scaled object
-saveRDS(data, file = "data_cc")
-
 # cell cycle effects strongly mitigated in PCA
 data <- RunPCA(data, features = VariableFeatures(data), nfeatures.print = 10)
 DimPlot(data)
@@ -1011,15 +924,19 @@ DimPlot(data)
 # Transform back to sce object
 sce.cc <- as.SingleCellExperiment(data)
 
+# save sce object
+saveRDS(sce.cc, file = "sce_cc")
+
 # Plot cell cycle phases for each sample as pie charts
 cc_vs_labels <- as.data.frame.matrix(table(sce.cc$Phase, sce.cc$sample))
 
-par(mfrow=c(2,3))
+par(mfrow=c(1,5))
 pie(cc_vs_labels$control, labels = rownames(cc_vs_labels), main = "Control")
 pie(cc_vs_labels$cap50, labels = rownames(cc_vs_labels), main = "Cap50")
 pie(cc_vs_labels$cap50_r4h, labels = rownames(cc_vs_labels), main = "Cap50_r4h")
 pie(cc_vs_labels$cap50_r8h, labels = rownames(cc_vs_labels), main = "Cap50_r8h")
 pie(cc_vs_labels$cap50_r16h, labels = rownames(cc_vs_labels), main = "Cap50_r16h")
+
 
 # --------------------------------------------------------------- #
 # Primary data - method 2: Using the cyclins
@@ -1058,18 +975,18 @@ gene_list <- getBM(filters= "ensembl_gene_id",
                    values= rownames(sce.ref),
                    mart= ensembl.mouse)
 
-for(i in 1:length(rownames(sce.ref))) {
-  gene <- rownames(sce.ref)[i]
-  gene_name <- gene_list[gene_list$ensembl_gene_id == gene, ]$external_gene_name
-  print(i)
-  print(gene_name)
-  if(length(gene_name) > 0) {
-    rownames(sce.ref)[i] <- gene_name
-  }
-}
+# for(i in 1:length(rownames(sce.ref))) {
+#   gene <- rownames(sce.ref)[i]
+#   gene_name <- gene_list[gene_list$ensembl_gene_id == gene, ]$external_gene_name
+#   print(i)
+#   print(gene_name)
+#   if(length(gene_name) > 0) {
+#     rownames(sce.ref)[i] <- gene_name
+#   }
+# }
 
 # To avoid long computational time due to for loop above, read the object from file
-#sce.ref <- readRDS("cc_sce_ref_transformed")
+sce.ref <- readRDS("cc_sce_ref_transformed")
 
 # Find genes that are present in both data sets and are cell cycle related
 candidates <- Reduce(intersect, 
@@ -1108,14 +1025,139 @@ pie(tab.df$cap50_r16h, labels = rownames(tab.df), main = "Cap50_r16h")
 # Regress out cell cycle effect
 sce.cc.3 <- regressBatches(sce.n, batch = assignments$labels)
 
+# Save sce
+saveRDS(sce.cc.3, file = "sce_cc_3")
+
+
+###########################
+### Dimension reduction ###
+###########################
+# --------------------------------------------------------------- #
+# Notes about dimension reduction
+# --------------------------------------------------------------- #
+# Dimension reduction
+# - Dimension reduction reduces computational work in downstream analyses (like clustering)
+# - PCA is performed on the log-normalized expression values by using runPCA() function
+# - A simple method for choosing the #PCs is to use the elbow point in the % of var. explained by successive PCs
+# - The simplest visualization approach is to plot the top 2 PCs with plotReducedDim() function
+
+# Objects:
+#  - sce.n            primary data, no cell cycle correction
+#  - sce.cc           primary data, Seurat cell cycle correction
+#  - sce.cc.3         primary data, cell cycle corrected using ref. profile
+#  - sce.dellOrso.n   dellOrso reference data
+#  - sce.deMicheli.n  deMicheli reference data
+
+# --------------------------------------------------------------- #
+# Primary data (no cell cycle correction)
+# --------------------------------------------------------------- #
+# Dimension reduction
+set.seed(123)
+sce.n <- runPCA(sce.n, subset_row = hvgs.data)
+plotReducedDim(sce.n, dimred = "PCA", colour_by = "sample")
+
+# Compute the variance explained by each PC
+percent.var <- attr(reducedDim(sce.n), "percentVar")
+chosen.elbow <- PCAtools::findElbowPoint(percent.var)
+chosen.elbow
+
+# Plot variance explained by PCs
+par(mfrow=c(1,1))
+plot(percent.var, xlab = "PC", ylab = "Variance explained (%)")
+abline(v = chosen.elbow, col = "red")
+
+# Remove PCs corresponding to technical noise
+set.seed(123)
+denoised.sce <- denoisePCA(sce.n, technical = dec.data, subset.row = hvgs.data)
+
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce))
+
+# Save the sce object
+saveRDS(denoised.sce, file = "denoised_sce")
+saveRDS(sce.n, file = "sce_n2")
+
+# --------------------------------------------------------------- #
+# Primary data (cell cycle correction using reference profile)
+# --------------------------------------------------------------- #
+#TODO
+
+
+# --------------------------------------------------------------- #
+# Primary data (Seurat cell cycle correction)
+# --------------------------------------------------------------- #
+#TODO
+
+
+
+# --------------------------------------------------------------- #
+# Dell'Orso et al. dataset
+# --------------------------------------------------------------- #
+# Perform dimension reduction
+sce.dellOrso.n <- runPCA(sce.dellOrso.n, subset_row = hvgs.dellOrso)
+plotReducedDim(sce.dellOrso.n, dimred = "PCA", colour_by = "sample")
+
+# Compute the variance explained by each PC
+percent.var.dellOrso <- attr(reducedDim(sce.dellOrso.n), "percentVar")
+chosen.elbow.dellOrso <- PCAtools::findElbowPoint(percent.var)
+chosen.elbow.dellOrso
+
+# Plot variance explained by PCs
+par(mfrow=c(1,1))
+plot(percent.var.dellOrso, xlab = "PC", ylab = "Variance explained (%)")
+abline(v=chosen.elbow.dellOrso, col = "red")
+
+# Remove PCs corresponding to technical noise
+set.seed(123)
+denoised.sce.dellOrso <- denoisePCA(sce.dellOrso.n,
+                                    technical = dec.dellOrso,
+                                    subset.row = hvgs.dellOrso)
+
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce.dellOrso))
+
+# Save sce object
+saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
+saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n2")
+
+# --------------------------------------------------------------- #
+# De Micheli et al. dataset
+# --------------------------------------------------------------- #
+# Perform dimension reduction
+sce.deMicheli.n <- runPCA(sce.deMicheli.n, subset_row = hvgs.deMicheli)
+plotReducedDim(sce.deMicheli.n, dimred = "PCA", colour_by = "sample")
+
+# Compute the variance explained by each PC
+percent.var.deMicheli <- attr(reducedDim(sce.deMicheli.n), "percentVar")
+chosen.elbow.deMicheli <- PCAtools::findElbowPoint(percent.var.deMicheli)
+chosen.elbow.deMicheli
+
+# Plot variance explained by PCs
+par(mfrow=c(1,1))
+plot(percent.var.deMicheli, xlab = "PC", ylab = "Variance explained (%)")
+abline(v=chosen.elbow.deMicheli, col = "red")
+
+# Remove PCs corresponding to technical noise
+set.seed(123)
+denoised.sce.deMicheli <- denoisePCA(sce.deMicheli.n,
+                                     technical = dec.deMicheli,
+                                     subset.row = hvgs.deMicheli)
+
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce.deMicheli))
+
+# Save sce object
+saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
+saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n2")
+
+
 ##################
 ### Clustering ###
 ##################
 # --------------------------------------------------------------- #
 # Notes about clustering
 # --------------------------------------------------------------- #
-# - After annotation based on marker genes, the clusters can be treated as proxies for more abstract biological concepts such as cell types or states.
-# - graph-based clustering is a flexible and scalable technique for clustering large scRNA-seq datasets
+# - Graph-based clustering is a flexible and scalable technique for clustering large scRNA-seq datasets
 # - The major advantage of graph-based clustering lies in its scalability. It only requires a k-nearest neighbor search that can be done in log-linear time on average
 # - SNNG = Shared Nearest Neighbor Graph
 
@@ -1149,6 +1191,44 @@ sce.n <- runUMAP(sce.n, dimred = "PCA", n_dimred = dimensions)
 plotReducedDim(sce.n, colour_by = "sample", dimred = "UMAP")
 
 # --------------------------------------------------------------- #
+# Primary data (cell cycle correction using reference profile)
+# --------------------------------------------------------------- #
+set.seed(123)
+denoised.sce.cc3 <- denoisePCA(sce.cc.3,
+                               technical = dec.data,
+                               subset.row = hvgs.data)
+
+
+# Perform clustering
+dimensions.cc.3 <- ncol(reducedDim(denoised.sce.cc.3))
+snng.cc.3 <- buildSNNGraph(sce.cc3, d = dimensions.cc.3)
+clust.cc.3 <- igraph::cluster_louvain(snng.cc.3)$membership
+sce.cc.3$cluster <- factor(clust.cc.3)
+
+set.seed(123)
+reducedDim(sce.cc.3, "force") <- igraph::layout_with_fr(snng.cc.3)
+table(clust.cc.3)
+
+# Plot results
+plotReducedDim(sce.cc.3, colour_by = "sample", dimred = "force")
+plotReducedDim(sce.cc.3, colour_by = "sample", dimred = "PCA")
+
+sce.cc3 <- runUMAP(sce.cc.3, dimred = "PCA", n_dimred = dimensions.cc.3)
+plotReducedDim(sce.cc.3, colour_by = "sample", dimred = "UMAP")
+
+
+# --------------------------------------------------------------- #
+# Primary data (cell cycle correction using reference profile)
+# --------------------------------------------------------------- #
+#TODO
+
+
+# --------------------------------------------------------------- #
+# Primary data (Seurat cell cycle correction)
+# --------------------------------------------------------------- #
+#TODO
+
+# --------------------------------------------------------------- #
 # Dell'Orso et al.
 # --------------------------------------------------------------- #
 # Perform clustering
@@ -1165,14 +1245,15 @@ table(clust.dellOrso)
 plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "force")
 plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "PCA")
 
-sce.dellOrso.n <- runUMAP(sce.dellOrso.n, dimred = "PCA", n_dimred = 5)
+sce.dellOrso.n <- runUMAP(sce.dellOrso.n, dimred = "PCA", n_dimred = dimensions.dellOrso)
 plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "UMAP")
 
 # --------------------------------------------------------------- #
 # De Micheli et al.
 # --------------------------------------------------------------- #
 # Perform clustering
-snng.deMicheli <- buildSNNGraph(sce.deMicheli.n, d = 5)
+dimensions.deMicheli <- ncol(reducedDim(denoised.sce.deMicheli))
+snng.deMicheli <- buildSNNGraph(sce.deMicheli.n, d = dimensions.deMicheli)
 clust.deMicheli <- igraph::cluster_louvain(snng.deMicheli)$membership
 sce.deMicheli.n$cluster <- factor(clust.deMicheli)
 
@@ -1184,7 +1265,7 @@ table(clust.dellOrso)
 plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "force")
 plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "PCA")
 
-sce.deMicheli.n <- runUMAP(sce.deMicheli.n, dimred = "PCA", n_dimred = 5)
+sce.deMicheli.n <- runUMAP(sce.deMicheli.n, dimred = "PCA", n_dimred = dimensions.deMicheli)
 plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "UMAP")
 
 
