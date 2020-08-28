@@ -421,6 +421,10 @@ saveRDS(sce.f,file="sce_f")
 # --------------------------------------------------------------- #
 # sce.deMicheli <- readRDS("sce_deMicheli")
 
+# Compute per cell quality control metrics
+sce.deMicheli <- addPerCellQC(sce.deMicheli, subsets = list(Mito=grep("mt-", rownames(sce.deMicheli))))
+rowData(sce.deMicheli)$mito <- FALSE
+rowData(sce.deMicheli)$mito[grep("^mt-", rownames(sce.deMicheli))] <- TRUE
 
 # # --------------- Alternative QC based on article --------------- #
 # # Remove genes that are expressed in less than 3 cells
@@ -488,13 +492,6 @@ saveRDS(sce.f,file="sce_f")
 # discardSummary.d7
 
 # --------------------------------------------------------------- #
-
-
-
-# Compute per cell quality control metrics
-sce.deMicheli <- addPerCellQC(sce.deMicheli, subsets = list(Mito=grep("mt-", rownames(sce.deMicheli))))
-rowData(sce.deMicheli)$mito <- FALSE
-rowData(sce.deMicheli)$mito[grep("^mt-", rownames(sce.deMicheli))] <- TRUE
 
 # Find outliers from total counts for each cell (sum)
 qc.lib.d0 <- isOutlier(sce.deMicheli$sum[sce.deMicheli$sampleID == "D0_FACS"], log = TRUE, type = "both", nmads = 3)
@@ -611,10 +608,61 @@ saveRDS(sce.deMicheli.f, file = "sce_deMicheli_f")
 # --------------------------------------------------------------- #
 #sce.dellOrso <- readRDS("sce_dellOrso")
 
+
 # Compute per cell quality control metrics
 sce.dellOrso <- addPerCellQC(sce.dellOrso, subsets = list(Mito=grep("mt-", rownames(sce.dellOrso))))
 rowData(sce.dellOrso)$mito <- FALSE
 rowData(sce.dellOrso)$mito[grep("^mt-", rownames(sce.dellOrso))] <- TRUE
+
+# --------------- Alternative QC based on article --------------- #
+# # Cells with <200 detected genes
+# qc.cell.hom1 <- sce.dellOrso$detected[sce.dellOrso$sample == "homeostatic_MuSCs_rep1"] < 200
+# qc.cell.hom2 <- sce.dellOrso$detected[sce.dellOrso$sample == "homeostatic_MuSCs_rep2"] < 200
+# qc.cell.inj1 <- sce.dellOrso$detected[sce.dellOrso$sample == "inj_60h_MuSCs_rep1"] < 200
+# qc.cell.inj2 <- sce.dellOrso$detected[sce.dellOrso$sample == "inj_60h_MuSCs_rep2"] < 200
+# qc.cell.pmb <- sce.dellOrso$detected[sce.dellOrso$sample == "Primary_MB"] < 200
+# 
+# # Cells with high % of UMIs mapped to mitochondrial genes
+# qc.mito.hom1 <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "homeostatic_MuSCs_rep1"] > 10
+# qc.mito.hom2 <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "homeostatic_MuSCs_rep2"] > 10
+# qc.mito.inj1 <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "inj_60h_MuSCs_rep1"] > 10
+# qc.mito.inj2 <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "inj_60h_MuSCs_rep2"] > 10
+# qc.mito.pmb <- sce.dellOrso$subsets_Mito_percent[sce.dellOrso$sample == "Primary_MB"] > 10
+# 
+# # Combine discards
+# discard.hom1 <- qc.cell.hom1 | qc.mito.hom1
+# discard.hom2 <- qc.cell.hom2 | qc.mito.hom2
+# discard.inj1 <- qc.cell.inj1 | qc.mito.inj1
+# discard.inj2 <- qc.cell.inj2 | qc.mito.inj2
+# discard.pmb <- qc.cell.pmb | qc.mito.pmb
+# 
+# # Summarize the number of cells removed for each reason
+# discardSummary.hom1 <- DataFrame(nGenes = sum(qc.cell.hom1),
+#                                  MitoProp = sum(qc.mito.hom1),
+#                                  Total = sum(discard.hom1))
+# discardSummary.hom2 <- DataFrame(nGenes = sum(qc.cell.hom2),
+#                                  MitoProp = sum(qc.mito.hom2),
+#                                  Total = sum(discard.hom2))
+# discardSummary.inj1 <- DataFrame(nGenes = sum(qc.cell.inj1),
+#                                  MitoProp = sum(qc.mito.inj1),
+#                                  Total = sum(discard.inj1))
+# discardSummary.inj2 <- DataFrame(nGenes = sum(qc.cell.inj2),
+#                                  MitoProp = sum(qc.mito.inj2),
+#                                  Total = sum(discard.inj2))
+# discardSummary.pmb <- DataFrame(nGenes = sum(qc.cell.pmb),
+#                                 MitoProp = sum(qc.mito.pmb),
+#                                 Total = sum(discard.pmb))
+# 
+# discardSummary.hom1
+# discardSummary.hom2
+# discardSummary.inj1
+# discardSummary.inj2
+# discardSummary.pmb
+# 
+# sce.dellOrso$discard <- c(discard.hom1, discard.hom2, discard.inj1, discard.inj2, discard.pmb)
+# sum(sce.dellOrso$discard)
+--------------------------------------------------------------- #
+
 
 # Find outliers from total counts for each cell (sum)
 qc.lib.hom1 <- isOutlier(sce.dellOrso$sum[sce.dellOrso$sample == "homeostatic_MuSCs_rep1"], log = TRUE, type = "both", nmads = 3)
