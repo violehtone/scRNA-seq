@@ -1078,7 +1078,7 @@ ncol(reducedDim(denoised.sce))
 
 # Save the sce object
 saveRDS(denoised.sce, file = "denoised_sce")
-saveRDS(sce.n, file = "sce_n2")
+#saveRDS(sce.n, file = "sce_n2")
 
 # --------------------------------------------------------------- #
 # Primary data (Seurat cell cycle correction)
@@ -1107,13 +1107,11 @@ ncol(reducedDim(denoised.sce.cc))
 
 # Save the sce object
 saveRDS(denoised.sce.cc, file = "denoised_sce_cc")
-saveRDS(sce.cc, file = "sce_cc2")
+#saveRDS(sce.cc, file = "sce_cc2")
 
 # --------------------------------------------------------------- #
 # Primary data (cell cycle correction using reference profile)
 # --------------------------------------------------------------- #
-# Set corrected counts to the 
-
 # Dimension reduction
 set.seed(123)
 sce.cc.3 <- runPCA(sce.cc.3, subset_row = hvgs.data, exprs_values = "corrected")
@@ -1140,8 +1138,8 @@ denoised.sce.cc.3 <- denoisePCA(sce.cc.3,
 ncol(reducedDim(denoised.sce.cc.3))
 
 # Save the sce object
-saveRDS(denoised.sce.cc.3, file = "denoised_sce_cc")
-saveRDS(sce.cc.3, file = "sce_cc_3_2")
+saveRDS(denoised.sce.cc.3, file = "denoised_sce_cc_3")
+#saveRDS(sce.cc.3, file = "sce_cc_3_2")
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. dataset
@@ -1171,7 +1169,7 @@ ncol(reducedDim(denoised.sce.dellOrso))
 
 # Save sce object
 saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
-saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n2")
+#saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n2")
 
 # --------------------------------------------------------------- #
 # De Micheli et al. dataset
@@ -1201,7 +1199,7 @@ ncol(reducedDim(denoised.sce.deMicheli))
 
 # Save sce object
 saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
-saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n2")
+#saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n2")
 
 
 ##################
@@ -1225,96 +1223,144 @@ saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n2")
 # - The graph can be visualized using a force-directed layout for the SNNG graph. This yields a dimensionality reduction result
 # - Fruchterman-Reingold layout algorithm (layout_with_fr()) places vertices on the plane using force-directed layout algorithm
 
+
+# Objects
+# - denoised.sce <- denoised primary data
+# - denoised.sce.cc <- denoised primary data with Seurat cell cycle correction
+# - denoised.sce.cc.3 <- denoised primary data with reference-based cell cycle correction
+# - denoised.sce.dellOrso <- denoised dellOrso reference data
+# - denoised.sce.deMicheli <- denoised deMicheli reference data
+
 # --------------------------------------------------------------- #
 # Primary data (no cell cycle correction)
 # --------------------------------------------------------------- #
 dimensions <- ncol(reducedDim(denoised.sce))
-snng <- buildSNNGraph(sce.n, d = dimensions)
+snng <- buildSNNGraph(denoised.sce, d = dimensions)
 clust <- igraph::cluster_louvain(snng)$membership
-sce.n$cluster <- factor(clust)
+denoised.sce$cluster <- factor(clust)
 
 set.seed(123)
-reducedDim(sce.n, "force") <- igraph::layout_with_fr(snng)
+reducedDim(denoised.sce, "force") <- igraph::layout_with_fr(snng)
 table(clust)
 
 # Plot results
-plotReducedDim(sce.n, colour_by = "sample", dimred = "force")
-plotReducedDim(sce.n, colour_by = "sample", dimred = "PCA")
-sce.n <- runUMAP(sce.n, dimred = "PCA", n_dimred = dimensions)
-plotReducedDim(sce.n, colour_by = "sample", dimred = "UMAP")
+pdf("./clustering_results/data_clust_force.pdf", 6, 5)
+plotReducedDim(denoised.sce, colour_by = "sample", dimred = "force")
+dev.off()
+
+pdf("./clustering_results/data_clust_pca.pdf", 6, 5)
+plotReducedDim(denoised.sce, colour_by = "sample", dimred = "PCA")
+dev.off()
+
+denoised.sce <- runUMAP(denoised.sce, dimred = "PCA", n_dimred = dimensions)
+pdf("./clustering_results/data_clust_umap.pdf", 6, 5)
+plotReducedDim(denoised.sce, colour_by = "sample", dimred = "UMAP")
+dev.off()
 
 # --------------------------------------------------------------- #
 # Primary data (cell cycle correction using reference profile)
 # --------------------------------------------------------------- #
-set.seed(123)
-denoised.sce.cc3 <- denoisePCA(sce.cc.3,
-                               technical = dec.data,
-                               subset.row = hvgs.data)
-
-
 # Perform clustering
 dimensions.cc.3 <- ncol(reducedDim(denoised.sce.cc.3))
-snng.cc.3 <- buildSNNGraph(sce.cc3, d = dimensions.cc.3)
+snng.cc.3 <- buildSNNGraph(denoised.sce.cc.3, d = dimensions.cc.3, assay.type = "corrected")
 clust.cc.3 <- igraph::cluster_louvain(snng.cc.3)$membership
-sce.cc.3$cluster <- factor(clust.cc.3)
+denoised.sce.cc.3$cluster <- factor(clust.cc.3)
 
 set.seed(123)
-reducedDim(sce.cc.3, "force") <- igraph::layout_with_fr(snng.cc.3)
+reducedDim(denoised.sce.cc.3, "force") <- igraph::layout_with_fr(snng.cc.3)
 table(clust.cc.3)
 
 # Plot results
-plotReducedDim(sce.cc.3, colour_by = "sample", dimred = "force")
-plotReducedDim(sce.cc.3, colour_by = "sample", dimred = "PCA")
+pdf("./clustering_results/data_cc3_clust_force.pdf", 6, 5)
+plotReducedDim(denoised.sce.cc.3, colour_by = "sample", dimred = "force")
+dev.off()
 
-sce.cc3 <- runUMAP(sce.cc.3, dimred = "PCA", n_dimred = dimensions.cc.3)
-plotReducedDim(sce.cc.3, colour_by = "sample", dimred = "UMAP")
+pdf("./clustering_results/data_cc3_clust_pca.pdf", 6, 5)
+plotReducedDim(denoised.sce.cc.3, colour_by = "sample", dimred = "PCA")
+dev.off()
 
+denoised.sce.cc.3 <- runUMAP(denoised.sce.cc.3, dimred = "PCA", n_dimred = dimensions.cc.3)
+pdf("./clustering_results/data_cc3_clust_umap.pdf", 6, 5)
+plotReducedDim(denoised.sce.cc.3, colour_by = "sample", dimred = "UMAP")
+dev.off()
 
 # --------------------------------------------------------------- #
 # Primary data (Seurat cell cycle correction)
 # --------------------------------------------------------------- #
-#TODO
+# Perform clustering
+dimensions.cc <- ncol(reducedDim(denoised.sce.cc))
+snng.cc <- buildSNNGraph(denoised.sce.cc, d = dimensions.cc)
+clust.cc <- igraph::cluster_louvain(snng.cc)$membership
+denoised.sce.cc$cluster <- factor(clust.cc)
+
+set.seed(123)
+reducedDim(denoised.sce.cc, "force") <- igraph::layout_with_fr(snng.cc)
+table(clust.cc)
+
+# Plot results
+pdf("./clustering_results/data_cc_clust_force.pdf", 6, 5)
+plotReducedDim(denoised.sce.cc, colour_by = "sample", dimred = "force")
+dev.off()
+
+pdf("./clustering_results/data_cc_clust_pca.pdf", 6, 5)
+plotReducedDim(denoised.sce.cc, colour_by = "sample", dimred = "PCA")
+dev.off()
+
+denoised.sce.cc <- runUMAP(denoised.sce.cc, dimred = "PCA", n_dimred = dimensions.cc)
+pdf("./clustering_results/data_cc_clust_umap.pdf", 6, 5)
+plotReducedDim(denoised.sce.cc, colour_by = "sample", dimred = "UMAP")
+dev.off()
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al.
 # --------------------------------------------------------------- #
 # Perform clustering
 dimensions.dellOrso <- ncol(reducedDim(denoised.sce.dellOrso))
-snng.dellOrso <- buildSNNGraph(sce.dellOrso.n, d = dimensions.dellOrso)
+snng.dellOrso <- buildSNNGraph(denoised.sce.dellOrso, d = dimensions.dellOrso)
 clust.dellOrso <- igraph::cluster_louvain(snng.dellOrso)$membership
-sce.dellOrso.n$cluster <- factor(clust.dellOrso)
+denoised.sce.dellOrso$cluster <- factor(clust.dellOrso)
 
 set.seed(123)
-reducedDim(sce.dellOrso.n, "force") <- igraph::layout_with_fr(snng.dellOrso)
+reducedDim(denoised.sce.dellOrso, "force") <- igraph::layout_with_fr(snng.dellOrso)
 table(clust.dellOrso)
 
 # Plot results
-plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "force")
-plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "PCA")
+pdf("./clustering_results/dellOrso_clust_force.pdf", 6, 5)
+plotReducedDim(denoised.sce.dellOrso, colour_by = "sample", dimred = "force")
+dev.off()
 
-sce.dellOrso.n <- runUMAP(sce.dellOrso.n, dimred = "PCA", n_dimred = dimensions.dellOrso)
-plotReducedDim(sce.dellOrso.n, colour_by = "sample", dimred = "UMAP")
+pdf("./clustering_results/dellOrso_clust_pca.pdf", 6, 5)
+plotReducedDim(denoised.sce.dellOrso, colour_by = "sample", dimred = "PCA")
+dev.off()
+
+denoised.sce.dellOrso <- runUMAP(denoised.sce.dellOrso, dimred = "PCA", n_dimred = dimensions.dellOrso)
+pdf("./clustering_results/dellOrso_clust_umap.pdf", 6, 5)
+plotReducedDim(denoised.sce.dellOrso, colour_by = "sample", dimred = "UMAP")
+dev.off()
 
 # --------------------------------------------------------------- #
 # De Micheli et al.
 # --------------------------------------------------------------- #
 # Perform clustering
 dimensions.deMicheli <- ncol(reducedDim(denoised.sce.deMicheli))
-snng.deMicheli <- buildSNNGraph(sce.deMicheli.n, d = dimensions.deMicheli)
+snng.deMicheli <- buildSNNGraph(denoised.sce.deMicheli, use.dimred = 'PCA')
 clust.deMicheli <- igraph::cluster_louvain(snng.deMicheli)$membership
-sce.deMicheli.n$cluster <- factor(clust.deMicheli)
+denoised.sce.deMicheli$cluster <- factor(clust.deMicheli)
 
 set.seed(123)
-reducedDim(sce.deMicheli.n, "force") <- igraph::layout_with_fr(snng.deMicheli)
-table(clust.dellOrso)
+reducedDim(denoised.sce.deMicheli, "force") <- igraph::layout_with_fr(snng.deMicheli)
+table(clust.deMicheli)
 
 # Plot results
-plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "force")
-plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "PCA")
+pdf("./clustering_results/deMicheli_clust_force.pdf", 6, 5)
+plotReducedDim(denoised.sce.deMicheli, colour_by = "sampleID", dimred = "force")
+dev.off()
 
-sce.deMicheli.n <- runUMAP(sce.deMicheli.n, dimred = "PCA", n_dimred = dimensions.deMicheli)
-plotReducedDim(sce.deMicheli.n, colour_by = "sampleID", dimred = "UMAP")
+pdf("./clustering_results/deMicheli_clust_pca.pdf", 6, 5)
+plotReducedDim(denoised.sce.deMicheli, colour_by = "sampleID", dimred = "PCA")
+dev.off()
 
-
-
-
+denoised.sce.deMicheli <- runUMAP(denoised.sce.deMicheli, dimred = "PCA", n_dimred = dimensions.deMicheli)
+pdf("./clustering_results/deMicheli_clust_umap.pdf", 6, 5)
+plotReducedDim(denoised.sce.deMicheli, colour_by = "sampleID", dimred = "UMAP")
+dev.off()
