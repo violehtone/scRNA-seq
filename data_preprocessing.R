@@ -1025,7 +1025,10 @@ pie(tab.df$cap50_r16h, labels = rownames(tab.df), main = "Cap50_r16h")
 # Regress out cell cycle effect
 sce.cc.3 <- regressBatches(sce.n, batch = assignments$labels)
 
-# Save sce
+# Add metadata 'sample' information to the newly created object
+sce.cc.3$sample <- sce.n$sample
+
+# Save cell cycle corrected sce
 saveRDS(sce.cc.3, file = "sce_cc_3")
 
 
@@ -1078,17 +1081,67 @@ saveRDS(denoised.sce, file = "denoised_sce")
 saveRDS(sce.n, file = "sce_n2")
 
 # --------------------------------------------------------------- #
-# Primary data (cell cycle correction using reference profile)
-# --------------------------------------------------------------- #
-#TODO
-
-
-# --------------------------------------------------------------- #
 # Primary data (Seurat cell cycle correction)
 # --------------------------------------------------------------- #
-#TODO
+# Dimension reduction
+set.seed(123)
+sce.cc <- runPCA(sce.cc, subset_row = hvgs.data)
+plotReducedDim(sce.cc, dimred = "PCA", colour_by = "sample")
 
+# Compute variance explained by each PC
+percent.var.cc <- attr(reducedDim(sce.cc), "percentVar")
+chosen.elbow.cc <- PCAtools::findElbowPoint(percent.var.cc)
+chosen.elbow.cc
 
+# Plot variance explained by PCs
+par(mfrow=c(1,1))
+plot(percent.var.cc, xlab = "PC", ylab = "Variance explained (%)")
+abline(v = chosen.elbow.cc, col = "red")
+
+# Remove PCs corresponding to technical noise
+set.seed(123)
+denoised.sce.cc <- denoisePCA(sce.cc, technical = dec.data, subset.row = hvgs.data)
+
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce.cc))
+
+# Save the sce object
+saveRDS(denoised.sce.cc, file = "denoised_sce_cc")
+saveRDS(sce.cc, file = "sce_cc2")
+
+# --------------------------------------------------------------- #
+# Primary data (cell cycle correction using reference profile)
+# --------------------------------------------------------------- #
+# Set corrected counts to the 
+
+# Dimension reduction
+set.seed(123)
+sce.cc.3 <- runPCA(sce.cc.3, subset_row = hvgs.data, exprs_values = "corrected")
+plotReducedDim(sce.cc.3, dimred = "PCA", colour_by = "sample")
+
+# Compute variance explained by each PC
+percent.var.cc.3 <- attr(reducedDim(sce.cc.3), "percentVar")
+chosen.elbow.cc.3 <- PCAtools::findElbowPoint(percent.var.cc.3)
+chosen.elbow.cc.3
+
+# Plot variance explained by PCs
+par(mfrow=c(1,1))
+plot(percent.var.cc.3, xlab = "PC", ylab = "Variance explained (%)")
+abline(v = chosen.elbow.cc.3, col = "red")
+
+# Remove PCs corresponding to technical noise
+set.seed(123)
+denoised.sce.cc.3 <- denoisePCA(sce.cc.3, 
+                                technical = dec.data,
+                                subset.row = hvgs.data,
+                                assay.type = "corrected")
+
+# Dimensions of denoised PCA
+ncol(reducedDim(denoised.sce.cc.3))
+
+# Save the sce object
+saveRDS(denoised.sce.cc.3, file = "denoised_sce_cc")
+saveRDS(sce.cc.3, file = "sce_cc_3_2")
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. dataset
@@ -1215,12 +1268,6 @@ plotReducedDim(sce.cc.3, colour_by = "sample", dimred = "PCA")
 
 sce.cc3 <- runUMAP(sce.cc.3, dimred = "PCA", n_dimred = dimensions.cc.3)
 plotReducedDim(sce.cc.3, colour_by = "sample", dimred = "UMAP")
-
-
-# --------------------------------------------------------------- #
-# Primary data (cell cycle correction using reference profile)
-# --------------------------------------------------------------- #
-#TODO
 
 
 # --------------------------------------------------------------- #
