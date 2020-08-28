@@ -421,6 +421,76 @@ saveRDS(sce.f,file="sce_f")
 # --------------------------------------------------------------- #
 # sce.deMicheli <- readRDS("sce_deMicheli")
 
+
+# # --------------- Alternative QC based on article --------------- #
+# # Remove genes that are expressed in less than 3 cells
+# keep_feature <- rowSums(counts(sce.deMicheli) > 0) >= 3
+# sce.deMicheli <- sce.deMicheli[keep_feature, ]
+# 
+# # Find cells with < 1000 UMIs
+# qc.umi.d0 <- sce.deMicheli$nUMI[sce.deMicheli$sampleID == "D0_FACS"] < 1000
+# qc.umi.d2 <- sce.deMicheli$nUMI[sce.deMicheli$sampleID == "D2_FACS"] < 1000
+# qc.umi.d5 <- sce.deMicheli$nUMI[sce.deMicheli$sampleID == "D5_FACS"] < 1000
+# qc.umi.d7 <- sce.deMicheli$nUMI[sce.deMicheli$sampleID == "D7_FACS"] < 1000
+# 
+# # Find cells with < 200 genes
+# qc.cell.d0 <- sce.deMicheli$nGene[sce.deMicheli$sampleID == "D0_FACS"] < 200
+# qc.cell.d2 <- sce.deMicheli$nGene[sce.deMicheli$sampleID == "D2_FACS"] < 200
+# qc.cell.d5 <- sce.deMicheli$nGene[sce.deMicheli$sampleID == "D5_FACS"] < 200
+# qc.cell.d7 <- sce.deMicheli$nGene[sce.deMicheli$sampleID == "D7_FACS"] < 200
+# 
+# # Find cells with >20% UMIs mapped to mitochondrial genes
+# qc.mito.d0 <- sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D0_FACS"] > 20
+# qc.mito.d2 <- sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D2_FACS"] > 20
+# qc.mito.d5 <- sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D5_FACS"] > 20
+# qc.mito.d7 <- sce.deMicheli$subsets_Mito_percent[sce.deMicheli$sampleID == "D7_FACS"] > 20
+# 
+# # Find outliers in number of UMIs (cell doublets)
+# qc.umiOutlier.d0 <- isOutlier(sce.deMicheli$nUMI[sce.deMicheli$sampleID == "D0_FACS"], log = TRUE, type = "both", nmads = 3)
+# qc.umiOutlier.d2 <- isOutlier(sce.deMicheli$nUMI[sce.deMicheli$sampleID == "D2_FACS"], log = TRUE, type = "both", nmads = 3)
+# qc.umiOutlier.d5 <- isOutlier(sce.deMicheli$nUMI[sce.deMicheli$sampleID == "D5_FACS"], log = TRUE, type = "both", nmads = 3)
+# qc.umiOutlier.d7 <- isOutlier(sce.deMicheli$nUMI[sce.deMicheli$sampleID == "D7_FACS"], log = TRUE, type = "both", nmads = 3)
+# 
+# # Combine discards
+# discard.d0 <- qc.umi.d0 | qc.cell.d0 | qc.mito.d0 | qc.umiOutlier.d0
+# discard.d2 <- qc.umi.d2 | qc.cell.d2 | qc.mito.d2 | qc.umiOutlier.d2
+# discard.d5 <- qc.umi.d5 | qc.cell.d5 | qc.mito.d5 | qc.umiOutlier.d5
+# discard.d7 <- qc.umi.d7 | qc.cell.d7 | qc.mito.d7 | qc.umiOutlier.d7
+# 
+# 
+# discardSummary.d0 <- DataFrame(umi1000 = sum(qc.umi.d0),
+#                                genes200 = sum(qc.cell.d0),
+#                                MitoProp = sum(qc.mito.d0),
+#                                umiOutlier = sum(qc.umiOutlier.d0),
+#                                Total = sum(discard.d0))
+# 
+# discardSummary.d2 <- DataFrame(umi1000 = sum(qc.umi.d2),
+#                                genes200 = sum(qc.cell.d2),
+#                                MitoProp = sum(qc.mito.d2),
+#                                umiOutlier = sum(qc.umiOutlier.d2),
+#                                Total = sum(discard.d2))
+# 
+# discardSummary.d5 <- DataFrame(umi1000 = sum(qc.umi.d5),
+#                                genes200 = sum(qc.cell.d5),
+#                                MitoProp = sum(qc.mito.d5),
+#                                umiOutlier = sum(qc.umiOutlier.d5),
+#                                Total = sum(discard.d5))
+# 
+# discardSummary.d7 <- DataFrame(umi1000 = sum(qc.umi.d7),
+#                                genes200 = sum(qc.cell.d7),
+#                                MitoProp = sum(qc.mito.d7),
+#                                umiOutlier = sum(qc.umiOutlier.d7),
+#                                Total = sum(discard.d7))
+# 
+# discardSummary.d0
+# discardSummary.d2
+# discardSummary.d5
+# discardSummary.d7
+
+# --------------------------------------------------------------- #
+
+
+
 # Compute per cell quality control metrics
 sce.deMicheli <- addPerCellQC(sce.deMicheli, subsets = list(Mito=grep("mt-", rownames(sce.deMicheli))))
 rowData(sce.deMicheli)$mito <- FALSE
@@ -1289,7 +1359,7 @@ dev.off()
 # --------------------------------------------------------------- #
 # Perform clustering
 dimensions.cc <- ncol(reducedDim(denoised.sce.cc))
-snng.cc <- buildSNNGraph(denoised.sce.cc, d = dimensions.cc)
+snng.cc <- buildSNNGraph(denoised.sce.cc, d = dimensions.cc, assay.type = "logcounts")
 clust.cc <- igraph::cluster_louvain(snng.cc)$membership
 denoised.sce.cc$cluster <- factor(clust.cc)
 
