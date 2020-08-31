@@ -44,14 +44,6 @@ firstColumnToRowNames <- function(data) {
   return(data)
 }
 
-
-removeGeneExpLessThanX <- function(data, x) {
-  #' Remove genes (from a sce object) that are expressed in less than x cells
-  keep_feature <- rowSums(counts(data) > 0) >= x
-  data <- data[keep_feature, ]
-  return(data)
-}
-
 #####################
 ### Load data ###
 #####################
@@ -614,7 +606,7 @@ sce.dellOrso <- addPerCellQC(sce.dellOrso, subsets = list(Mito=grep("mt-", rowna
 rowData(sce.dellOrso)$mito <- FALSE
 rowData(sce.dellOrso)$mito[grep("^mt-", rownames(sce.dellOrso))] <- TRUE
 
-# --------------- Alternative QC based on article --------------- #
+# ## --------------- Alternative QC based on article --------------- #
 # # Cells with <200 detected genes
 # qc.cell.hom1 <- sce.dellOrso$detected[sce.dellOrso$sample == "homeostatic_MuSCs_rep1"] < 200
 # qc.cell.hom2 <- sce.dellOrso$detected[sce.dellOrso$sample == "homeostatic_MuSCs_rep2"] < 200
@@ -661,7 +653,7 @@ rowData(sce.dellOrso)$mito[grep("^mt-", rownames(sce.dellOrso))] <- TRUE
 # 
 # sce.dellOrso$discard <- c(discard.hom1, discard.hom2, discard.inj1, discard.inj2, discard.pmb)
 # sum(sce.dellOrso$discard)
---------------------------------------------------------------- #
+# ##--------------------------------------------------------------- #
 
 
 # Find outliers from total counts for each cell (sum)
@@ -954,6 +946,12 @@ curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 hvgs.deMicheli <- getTopHVGs(dec.deMicheli, prop = 0.1)
 
 
+################################
+### Diagnosing batch effects ###
+################################
+
+
+
 #########################################
 ### Cell cycle scoring and regression ###
 #########################################
@@ -1029,18 +1027,32 @@ data <- FindVariableFeatures(data, selection.method = "vst")
 data@assays$RNA@var.features <- hvgs.data
 
 # Regress out CC difference using the HVGs as features
-data <- ScaleData(data, vars.to.regress = "CC.Difference", features = VariableFeatures(data))
-
-# cell cycle effects strongly mitigated in PCA
-data <- RunPCA(data, features = VariableFeatures(data), nfeatures.print = 10)
-DimPlot(data)
-
-# PCA on cell cycle genes
-data <- RunPCA(data, features = c(s.genes, g2m.genes))
-DimPlot(data)
+data <- ScaleData(data, vars.to.regress = "CC.Difference", features = VariableFeatures(data), assay = "RNA")
 
 # Transform back to sce object
-sce.cc <- as.SingleCellExperiment(data)
+sce.cc <- as.SingleCellExperiment(data, assay = "RNA")
+
+# Set the CC corrected data into the sce object
+# Option 1: Set CC corrected counts as alternative experiment
+cc_corrected <- SummarizedExperiment(list(counts = data@assays$RNA@scale.data))
+altExp(sce.cc, "CC_corrected") <- cc_corrected
+
+# Swap the alternative experiment into the main experiment
+sce.cc <- swapAltExp(x = sce.cc,
+                     name = "CC_corrected",
+                     saved = "original",
+                     withColData = TRUE)
+
+# # Option 2: Create a new count matrix with CC corrected counts for HVGs and zero counts for all the other genes
+# cc_corrected <- data@assays$RNA@scale.data
+# nRows <- length(setdiff(rownames(sce.cc), rownames(cc_corrected)))
+# missing_values <- setNames(data.frame(matrix(ncol = ncol(sce.cc), nrow = nRows)),  colnames(sce.cc))
+# rownames(missing_values) <- setdiff(rownames(sce.cc), row.names(cc_corrected))
+# missing_values[is.na(missing_values)] = 0
+# cc_corrected_assay <- rbind(cc_corrected, missing_values)
+# cc_corrected_assay_sorted <- cc_corrected_assay[order(match(rownames(cc_corrected_assay), rownames(sce.cc))), ]
+# assay(sce.cc, "cc_corrected") <- cc_corrected_assay_sorted
+# saveRDS(sce.cc, file = "sce_cc_corrected")
 
 # save sce object
 saveRDS(sce.cc, file = "sce_cc")
@@ -1202,8 +1214,12 @@ saveRDS(denoised.sce, file = "denoised_sce")
 # Primary data (Seurat cell cycle correction)
 # --------------------------------------------------------------- #
 # Dimension reduction
+# PCA
 set.seed(123)
-sce.cc <- runPCA(sce.cc, subset_row = hvgs.data)
+sce.cc <- runPCA(x = sce.cc,
+                 subset_row = hvgs.data,
+                 exprs_values = "counts")
+
 plotReducedDim(sce.cc, dimred = "PCA", colour_by = "sample")
 
 # Compute variance explained by each PC
@@ -1218,14 +1234,14 @@ abline(v = chosen.elbow.cc, col = "red")
 
 # Remove PCs corresponding to technical noise
 set.seed(123)
-denoised.sce.cc <- denoisePCA(sce.cc, technical = dec.data, subset.row = hvgs.data)
+denoised.sce.cc <- denoisePCA(sce.cc, technical = dec.data, subset.row = hvgs.data,
+                              assay.type = "counts")
 
 # Dimensions of denoised PCA
 ncol(reducedDim(denoised.sce.cc))
 
 # Save the sce object
 saveRDS(denoised.sce.cc, file = "denoised_sce_cc")
-#saveRDS(sce.cc, file = "sce_cc2")
 
 # --------------------------------------------------------------- #
 # Primary data (cell cycle correction using reference profile)
@@ -1407,7 +1423,7 @@ dev.off()
 # --------------------------------------------------------------- #
 # Perform clustering
 dimensions.cc <- ncol(reducedDim(denoised.sce.cc))
-snng.cc <- buildSNNGraph(denoised.sce.cc, d = dimensions.cc, assay.type = "logcounts")
+snng.cc <- buildSNNGraph(denoised.sce.cc, d = dimensions.cc, assay.type = "counts")
 clust.cc <- igraph::cluster_louvain(snng.cc)$membership
 denoised.sce.cc$cluster <- factor(clust.cc)
 
