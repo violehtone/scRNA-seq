@@ -400,7 +400,7 @@ abundance <- rowMeans(logged)
 plot(abundance, logFC, xlab="Average count", ylab="Log-FC (lost/kept)", pch=16)
 points(abundance[rowData(sce)$mito==TRUE], logFC[rowData(sce)$mito==TRUE], col="dodgerblue", pch=16)
 
-changed <- logFC>0.5
+changed <- logFC > 1 | logFC < -1
 
 # Up in discarded
 rownames(sce)[changed]
@@ -586,7 +586,7 @@ abundance <- rowMeans(logged)
 plot(abundance, logFC, xlab="Average count", ylab="Log-FC (lost/kept)", pch=16)
 points(abundance[rowData(sce.deMicheli)$mito==TRUE], logFC[rowData(sce.deMicheli)$mito==TRUE], col="dodgerblue", pch=16)
 
-changed <- logFC>0.5
+changed <- logFC > 1 | logFC < -1
 
 # Up in discarded
 rownames(sce.deMicheli)[changed]
@@ -770,15 +770,13 @@ abundance <- rowMeans(logged)
 plot(abundance, logFC, xlab="Average count", ylab="Log-FC (lost/kept)", pch=16)
 points(abundance[rowData(sce.dellOrso)$mito==TRUE], logFC[rowData(sce.dellOrso)$mito==TRUE], col="dodgerblue", pch=16)
 
-changed <- logFC>0.5
+changed <- logFC > 1 | logFC < -1
 
 # Up in discarded
 rownames(sce.dellOrso)[changed]
 
 # Save filtered sce file
 saveRDS(sce.dellOrso.f, file = "sce_dellOrso_f")
-
-
 
 #####################
 ### Normalization ###
@@ -917,6 +915,9 @@ curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 # Define highly variable genes (HVGs)
 hvgs.data <- getTopHVGs(dec.data, prop = 0.1)
 
+# save HVGS
+saveRDS(hvgs.data, file = "hvgs_data")
+
 # --------------------------------------------------------------- #
 # Dell'Orso et al. dataset
 # --------------------------------------------------------------- #
@@ -930,6 +931,9 @@ curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 
 # Define the highly variable genes (HVGs)
 hvgs.dellOrso <- getTopHVGs(dec.dellOrso, prop = 0.1)
+
+# save HVGS
+saveRDS(hvgs.dellOrso, file = "hvgs_dellOrso")
 
 # --------------------------------------------------------------- #
 # De Micheli et al. dataset
@@ -945,12 +949,55 @@ curve(fit1$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
 # Define the highly variable genes (HVGs)
 hvgs.deMicheli <- getTopHVGs(dec.deMicheli, prop = 0.1)
 
+# save HVGS
+saveRDS(hvgs.deMicheli, file = "hvgs_deMicheli")
 
 ################################
 ### Diagnosing batch effects ###
 ################################
+# If samples from same batches create distinct clusters, then batch effect is most likely present in the data
 
+# --------------------------------------------------------------- #
+# De Micheli et al. dataset (doesn't contain any batches)
+# --------------------------------------------------------------- #
+# set.seed(123)
+# uncorrected.deMicheli <- runPCA(sce.deMicheli.n, subset_row = hvgs.deMicheli,
+#                                 BSPARAM = BiocSingular::RandomParam())
+# 
+# snn.gr.deMicehli <- buildSNNGraph(uncorrected.deMicheli, use.dimred = "PCA")
+# clusters.deMicheli <- igraph::cluster_walktrap(snn.gr.deMicehli)$membership
+# 
+# tab <- table(Cluster = clusters.deMicheli, Batch = uncorrected.deMicheli$sampleID)
+# tab
+# 
+# set.seed(123)
+# uncorrected.deMicheli <- runTSNE(uncorrected.deMicheli, dimred = "PCA")
+# plotTSNE(uncorrected.deMicheli, colour_by = "sampleID")
+# 
+# pdf("./batch_effect_results/batch_deMicheli.pdf", 6, 5)
+# plotTSNE(uncorrected.deMicheli, colour_by = "sampleID")
+# dev.off()
 
+# --------------------------------------------------------------- #
+# Dell'Orso et al. dataset
+# --------------------------------------------------------------- #
+set.seed(123)
+uncorrected.dellOrso <- runPCA(sce.dellOrso.n, subset_row = hvgs.dellOrso,
+                                BSPARAM = BiocSingular::RandomParam())
+
+snn.gr.dellOrso <- buildSNNGraph(uncorrected.dellOrso, use.dimred = "PCA")
+clusters.dellOrso <- igraph::cluster_walktrap(snn.gr.dellOrso)$membership
+
+tab <- table(Cluster = clusters.dellOrso, Batch = uncorrected.dellOrso$sampleID)
+tab
+
+set.seed(123)
+uncorrected.dellOrso <- runTSNE(uncorrected.dellOrso, dimred = "PCA")
+plotTSNE(uncorrected.dellOrso, colour_by = "sample")
+
+pdf("./batch_effect_results/batch_dellOrso.pdf", 6, 5)
+plotTSNE(uncorrected.dellOrso, colour_by = "sampleID")
+dev.off()
 
 #########################################
 ### Cell cycle scoring and regression ###
@@ -1180,6 +1227,25 @@ saveRDS(sce.cc.3, file = "sce_cc_3")
 #  - sce.cc.3         primary data, cell cycle corrected using ref. profile
 #  - sce.dellOrso.n   dellOrso reference data
 #  - sce.deMicheli.n  deMicheli reference data
+#  - hvgs.data        primary data HVGs
+#  - hvgs.dellOrso    dellOrso HVGs
+#  - hvgs.deMicheli   deMicheli HVGs
+#  - dec.data         per-gene variance of primary data
+#  - dec.dellOrso     per-gene variance of dellOrso data
+#  - dec.deMicheli    per-gene variance of deMicheli data
+
+# # Read objects
+# sce.n <- readRDS("sce_n")
+# sce.cc <- readRDS("sce_cc")
+# sce.cc.3 <- readRDS("sce_cc_3")
+# sce.deMicheli.n <- readRDS("sce_deMicheli_n")
+# sce.dellOrso.n <- readRDS("sce_dellOrso_n")
+# hvgs.data <- readRDS("hvgs_data")
+# hvgs.dellOrso <- readRDS("hvgs_dellOrso")
+# hvgs.deMicheli <- readRDS("hvgs_deMicheli")
+# dec.data <- readRDS("dec_data)
+# dec.dellOrso <- readRDS("dec_dellOrso")
+# dec.deMicheli <- readRDS("dec_deMicheli")
 
 # --------------------------------------------------------------- #
 # Primary data (no cell cycle correction)
@@ -1208,13 +1274,11 @@ ncol(reducedDim(denoised.sce))
 
 # Save the sce object
 saveRDS(denoised.sce, file = "denoised_sce")
-#saveRDS(sce.n, file = "sce_n2")
 
 # --------------------------------------------------------------- #
 # Primary data (Seurat cell cycle correction)
 # --------------------------------------------------------------- #
 # Dimension reduction
-# PCA
 set.seed(123)
 sce.cc <- runPCA(x = sce.cc,
                  subset_row = hvgs.data,
@@ -1273,7 +1337,6 @@ ncol(reducedDim(denoised.sce.cc.3))
 
 # Save the sce object
 saveRDS(denoised.sce.cc.3, file = "denoised_sce_cc_3")
-#saveRDS(sce.cc.3, file = "sce_cc_3_2")
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al. dataset
@@ -1284,7 +1347,7 @@ plotReducedDim(sce.dellOrso.n, dimred = "PCA", colour_by = "sample")
 
 # Compute the variance explained by each PC
 percent.var.dellOrso <- attr(reducedDim(sce.dellOrso.n), "percentVar")
-chosen.elbow.dellOrso <- PCAtools::findElbowPoint(percent.var)
+chosen.elbow.dellOrso <- PCAtools::findElbowPoint(percent.var.dellOrso)
 chosen.elbow.dellOrso
 
 # Plot variance explained by PCs
@@ -1303,7 +1366,6 @@ ncol(reducedDim(denoised.sce.dellOrso))
 
 # Save sce object
 saveRDS(denoised.sce.dellOrso, file = "denoised_sce_dellOrso")
-#saveRDS(sce.dellOrso.n, file = "sce_dellOrso_n2")
 
 # --------------------------------------------------------------- #
 # De Micheli et al. dataset
@@ -1333,8 +1395,6 @@ ncol(reducedDim(denoised.sce.deMicheli))
 
 # Save sce object
 saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
-#saveRDS(sce.deMicheli.n, file = "sce_deMicheli_n2")
-
 
 ##################
 ### Clustering ###
@@ -1365,6 +1425,14 @@ saveRDS(denoised.sce.deMicheli, file = "denoised_sce_deMicheli")
 # - denoised.sce.dellOrso <- denoised dellOrso reference data
 # - denoised.sce.deMicheli <- denoised deMicheli reference data
 
+# Load data
+denoised.sce <- readRDS("denoised_sce")
+denoised.sce.cc <- readRDS("denoised_sce_cc")
+denoised.sce.cc.3 <- readRDS("denoised_sce_cc_3")
+denoised.sce.dellOrso <- readRDS("denoised_sce_dellOrso")
+denoised.sce.deMicheli <- readRDS("denoised_sce_deMicheli")
+
+
 # --------------------------------------------------------------- #
 # Primary data (no cell cycle correction)
 # --------------------------------------------------------------- #
@@ -1377,7 +1445,7 @@ set.seed(123)
 reducedDim(denoised.sce, "force") <- igraph::layout_with_fr(snng)
 table(clust)
 
-# Plot results
+# Plot clustering results
 pdf("./clustering_results/data_clust_force.pdf", 6, 5)
 plotReducedDim(denoised.sce, colour_by = "sample", dimred = "force")
 dev.off()
@@ -1389,6 +1457,11 @@ dev.off()
 denoised.sce <- runUMAP(denoised.sce, dimred = "PCA", n_dimred = dimensions)
 pdf("./clustering_results/data_clust_umap.pdf", 6, 5)
 plotReducedDim(denoised.sce, colour_by = "sample", dimred = "UMAP")
+dev.off()
+
+denoised.sce <- runTSNE(denoised.sce, dimred = "PCA")
+pdf("./clustering_results/data_clust_tsne.pdf", 6, 5)
+plotTSNE(denoised.sce, colour_by = "sample")
 dev.off()
 
 # --------------------------------------------------------------- #
@@ -1418,6 +1491,11 @@ pdf("./clustering_results/data_cc3_clust_umap.pdf", 6, 5)
 plotReducedDim(denoised.sce.cc.3, colour_by = "sample", dimred = "UMAP")
 dev.off()
 
+denoised.sce.cc.3 <- runTSNE(denoised.sce.cc.3, dimred = "PCA")
+pdf("./clustering_results/data_cc3_clust_tsne.pdf", 6, 5)
+plotTSNE(denoised.sce.cc.3, colour_by = "sample")
+dev.off()
+
 # --------------------------------------------------------------- #
 # Primary data (Seurat cell cycle correction)
 # --------------------------------------------------------------- #
@@ -1444,6 +1522,12 @@ denoised.sce.cc <- runUMAP(denoised.sce.cc, dimred = "PCA", n_dimred = dimension
 pdf("./clustering_results/data_cc_clust_umap.pdf", 6, 5)
 plotReducedDim(denoised.sce.cc, colour_by = "sample", dimred = "UMAP")
 dev.off()
+
+denoised.sce.cc <- runTSNE(denoised.sce.cc, dimred = "PCA")
+pdf("./clustering_results/data_cc_clust_tsne.pdf", 6, 5)
+plotTSNE(denoised.sce.cc, colour_by = "sample")
+dev.off()
+
 
 # --------------------------------------------------------------- #
 # Dell'Orso et al.
@@ -1472,6 +1556,12 @@ pdf("./clustering_results/dellOrso_clust_umap.pdf", 6, 5)
 plotReducedDim(denoised.sce.dellOrso, colour_by = "sample", dimred = "UMAP")
 dev.off()
 
+denoised.sce.dellOrso <- runTSNE(denoised.sce.dellOrso, dimred = "PCA")
+pdf("./clustering_results/dellOrso_clust_tsne.pdf", 6, 5)
+plotTSNE(denoised.sce.dellOrso, colour_by = "sample")
+dev.off()
+
+
 # --------------------------------------------------------------- #
 # De Micheli et al.
 # --------------------------------------------------------------- #
@@ -1497,4 +1587,26 @@ dev.off()
 denoised.sce.deMicheli <- runUMAP(denoised.sce.deMicheli, dimred = "PCA", n_dimred = dimensions.deMicheli)
 pdf("./clustering_results/deMicheli_clust_umap.pdf", 6, 5)
 plotReducedDim(denoised.sce.deMicheli, colour_by = "sampleID", dimred = "UMAP")
+dev.off()
+
+denoised.sce.deMicheli <- runTSNE(denoised.sce.deMicheli, dimred = "PCA")
+pdf("./clustering_results/deMicheli_clust_tsne.pdf", 6, 5)
+plotTSNE(denoised.sce.deMicheli, colour_by = "sampleID")
+dev.off()
+
+
+# --------------------------------------------------------------- #
+# Combine plots
+# --------------------------------------------------------------- #
+clust <- plotReducedDim(denoised.sce, colour_by = "sample", dimred = "UMAP") + ggtitle('primary data')
+clust_cc <- plotReducedDim(denoised.sce.cc, colour_by = "sample", dimred = "UMAP") + ggtitle('CC corrected primary data (Seurat)')
+clust_cc3 <- plotReducedDim(denoised.sce.cc.3, colour_by = "sample", dimred = "UMAP") + ggtitle('CC corrected primary data (Reference-based)')
+clust_dellOrso <- plotReducedDim(denoised.sce.dellOrso, colour_by = "sample", dimred = "UMAP") + ggtitle("Dell'Orso reference data")
+clust_deMicheli <- plotReducedDim(denoised.sce.deMicheli, colour_by = "sampleID", dimred = "UMAP") + ggtitle('De Micheli reference data')
+
+library(ggplot2)
+gridExtra::grid.arrange(clust, clust_cc, clust_cc3, clust_deMicheli, clust_dellOrso, nrow = 2)
+
+png("./clustering_results/all_umaps.png")
+gridExtra::grid.arrange(clust, clust_cc, clust_cc3, clust_deMicheli, clust_dellOrso, nrow = 2)
 dev.off()
